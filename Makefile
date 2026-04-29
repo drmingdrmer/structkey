@@ -24,6 +24,7 @@ lint:
 	cargo clippy --workspace --all-targets -- -D warnings
 	taplo fmt --check
 	RUSTDOCFLAGS="-D warnings" cargo doc --workspace --no-deps
+	cargo machete
 	typos
 
 # Type checking

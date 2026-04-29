@@ -11,12 +11,7 @@ keywords = ["key", "codec", "kv-store", "derive"]
 categories = ["encoding", "data-structures"]
 readme = "../../README.md"
 
-[features]
-default = ["derive"]
-derive = ["dep:structkey-derive"]
-
 [dependencies]
-structkey-derive = { workspace = true, optional = true }
 thiserror = { workspace = true }
 
 [dev-dependencies]
