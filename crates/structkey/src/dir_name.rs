@@ -8,7 +8,10 @@
 //! Truncation is clamped at the prefix: a level that exceeds the segment
 //! count returns just `K::PREFIX`.
 
+use crate::KeyBuilder;
+use crate::KeyCodec;
 use crate::KeyError;
+use crate::KeyParser;
 use crate::StructKey;
 
 /// A view of a `StructKey` truncated to its first `n` segments, where
@@ -48,11 +51,34 @@ impl<K> DirName<K> {
 impl<K> DirName<K>
 where K: StructKey
 {
-    /// Encode `key` and drop `level` trailing segments.
-    ///
-    /// Clamps at the prefix: if `level` is at or above the segment count,
-    /// returns just `K::PREFIX`.
-    pub fn to_string_key(&self) -> String {
+    /// `to_string_key()` with a trailing `/`. Convenient for building
+    /// list-prefix queries against KV stores that scan by string range.
+    pub fn dir_name_with_slash(&self) -> String {
+        let prefix = self.to_string_key();
+        format!("{}/", prefix)
+    }
+}
+
+// `DirName` is a transformation over a structured key, not a sequence of
+// fields, so it has no meaningful per-field codec. The impl exists only
+// to satisfy the `KeyCodec` supertrait of `StructKey`; both methods panic
+// because nothing in this crate calls them on a `DirName` -- the
+// `StructKey` impl below overrides `to_string_key` / `from_str_key` so
+// the default routes through `encode_key` / `decode_key` are bypassed.
+impl<K: StructKey> KeyCodec for DirName<K> {
+    fn encode_key(&self, _b: KeyBuilder) -> KeyBuilder {
+        unimplemented!("DirName has no field-level encoding")
+    }
+
+    fn decode_key(_p: &mut KeyParser) -> Result<Self, KeyError> {
+        unimplemented!("DirName has no field-level decoding")
+    }
+}
+
+impl<K: StructKey> StructKey for DirName<K> {
+    const PREFIX: &'static str = K::PREFIX;
+
+    fn to_string_key(&self) -> String {
         let k = self.key.to_string_key();
         // `rsplitn(n, ...)` returns at most `n` parts, splitting from the
         // right; `.last()` is the un-split remainder. With `n = level + 1`
@@ -62,27 +88,17 @@ where K: StructKey
 
     /// Decode `s` as a `K` and wrap it at level 0.
     ///
-    /// At level 0 `to_string_key()` reproduces the input verbatim. Callers
+    /// At level 0, `to_string_key()` reproduces the input verbatim. Callers
     /// that want a truncated form can adjust the level afterwards.
-    pub fn from_str_key(s: &str) -> Result<Self, KeyError> {
+    fn from_str_key(s: &str) -> Result<Self, KeyError> {
         let k = K::from_str_key(s)?;
         Ok(DirName::new_with_level(k, 0))
-    }
-
-    /// `to_string_key()` with a trailing `/`. Convenient for building
-    /// list-prefix queries against KV stores that scan by string range.
-    pub fn dir_name_with_slash(&self) -> String {
-        let prefix = self.to_string_key();
-        format!("{}/", prefix)
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::KeyBuilder;
-    use crate::KeyCodec;
-    use crate::KeyParser;
 
     #[derive(Debug, Clone, PartialEq, Eq)]
     struct Foo {
@@ -148,6 +164,27 @@ mod tests {
             dir.to_string_key(),
             "level above depth clamps to prefix"
         );
+    }
+
+    #[test]
+    fn recursive_nesting_drops_one_level_each() {
+        let k = Foo {
+            a: 1,
+            b: "b".to_string(),
+            c: 2,
+        };
+
+        let dir = DirName::new(k);
+        assert_eq!("pref/1/b", dir.to_string_key());
+
+        let dir = DirName::new(dir);
+        assert_eq!("pref/1", dir.to_string_key());
+
+        let dir = DirName::new(dir);
+        assert_eq!("pref", dir.to_string_key());
+
+        let dir = DirName::new(dir);
+        assert_eq!("pref", dir.to_string_key(), "root dir clamps");
     }
 
     #[test]
