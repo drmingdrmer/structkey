@@ -55,6 +55,10 @@ impl KeyCodec for Raw {
     where Self: Sized {
         Ok(Raw(p.next_raw()?.to_string()))
     }
+
+    fn segment_count(&self) -> usize {
+        1
+    }
 }
 
 #[cfg(test)]

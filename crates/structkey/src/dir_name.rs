@@ -59,41 +59,44 @@ where K: StructKey
     }
 }
 
-// `DirName` is a transformation over a structured key, not a sequence of
-// fields, so it has no meaningful per-field codec. The impl exists only
-// to satisfy the `KeyCodec` supertrait of `StructKey`; both methods panic
-// because nothing in this crate calls them on a `DirName` -- the
-// `StructKey` impl below overrides `to_string_key` / `from_str_key` so
-// the default routes through `encode_key` / `decode_key` are bypassed.
-impl<K: StructKey> KeyCodec for DirName<K> {
-    fn encode_key(&self, _b: KeyBuilder) -> KeyBuilder {
-        unimplemented!("DirName has no field-level encoding")
+impl<K: KeyCodec> KeyCodec for DirName<K> {
+    /// Encode the inner key and push only the first
+    /// `key.segment_count() - level` segments onto `b`. Encoding produces
+    /// a complete K string first; truncation then slices off the tail
+    /// without an extra allocation.
+    fn encode_key(&self, b: KeyBuilder) -> KeyBuilder {
+        let kept = self.segment_count();
+        if kept == 0 {
+            return b;
+        }
+        let k_encoded = self.key.encode_key(KeyBuilder::new()).done();
+        // Position of the `kept`-th `/`, or end-of-string if there are
+        // fewer separators than that. Slicing up to that index keeps
+        // exactly `kept` segments.
+        let cut_at = k_encoded
+            .match_indices('/')
+            .nth(kept - 1)
+            .map(|(i, _)| i)
+            .unwrap_or(k_encoded.len());
+        b.push_raw(&k_encoded[..cut_at])
     }
 
-    fn decode_key(_p: &mut KeyParser) -> Result<Self, KeyError> {
-        unimplemented!("DirName has no field-level decoding")
+    /// Consume `K`'s segments from the parser and wrap the result at
+    /// level 0 -- i.e. a `DirName` whose `to_string_key` reproduces the
+    /// just-parsed input. Callers that want a truncated form adjust the
+    /// level afterwards.
+    fn decode_key(p: &mut KeyParser) -> Result<Self, KeyError> {
+        let k = K::decode_key(p)?;
+        Ok(DirName::new_with_level(k, 0))
+    }
+
+    fn segment_count(&self) -> usize {
+        self.key.segment_count().saturating_sub(self.level)
     }
 }
 
 impl<K: StructKey> StructKey for DirName<K> {
     const PREFIX: &'static str = K::PREFIX;
-
-    fn to_string_key(&self) -> String {
-        let k = self.key.to_string_key();
-        // `rsplitn(n, ...)` returns at most `n` parts, splitting from the
-        // right; `.last()` is the un-split remainder. With `n = level + 1`
-        // that remainder has `level` fewer segments than the input.
-        k.rsplitn(self.level + 1, '/').last().unwrap().to_string()
-    }
-
-    /// Decode `s` as a `K` and wrap it at level 0.
-    ///
-    /// At level 0, `to_string_key()` reproduces the input verbatim. Callers
-    /// that want a truncated form can adjust the level afterwards.
-    fn from_str_key(s: &str) -> Result<Self, KeyError> {
-        let k = K::from_str_key(s)?;
-        Ok(DirName::new_with_level(k, 0))
-    }
 }
 
 #[cfg(test)]
@@ -118,6 +121,10 @@ mod tests {
                 b: String::decode_key(p)?,
                 c: u64::decode_key(p)?,
             })
+        }
+
+        fn segment_count(&self) -> usize {
+            self.a.segment_count() + self.b.segment_count() + self.c.segment_count()
         }
     }
 
@@ -196,5 +203,27 @@ mod tests {
         };
         let dir = DirName::new(k);
         assert_eq!("pref/1/b/", dir.dir_name_with_slash());
+    }
+
+    #[test]
+    fn segment_count_subtracts_level() {
+        let k = Foo {
+            a: 1,
+            b: "b".to_string(),
+            c: 2,
+        };
+        // K has 3 segments. Level subtracts; clamp at 0.
+        let mut dir = DirName::new_with_level(k, 0);
+        assert_eq!(3, dir.segment_count());
+        dir.with_level(1);
+        assert_eq!(2, dir.segment_count());
+        dir.with_level(3);
+        assert_eq!(0, dir.segment_count());
+        dir.with_level(99);
+        assert_eq!(
+            0,
+            dir.segment_count(),
+            "level above K's segment count clamps to 0"
+        );
     }
 }

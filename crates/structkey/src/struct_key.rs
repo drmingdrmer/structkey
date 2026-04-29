@@ -56,6 +56,10 @@ mod tests {
         fn decode_key(_p: &mut KeyParser) -> Result<Self, KeyError> {
             Ok(Empty)
         }
+
+        fn segment_count(&self) -> usize {
+            0
+        }
     }
 
     impl StructKey for Empty {
@@ -78,6 +82,10 @@ mod tests {
                 a: u64::decode_key(p)?,
                 b: String::decode_key(p)?,
             })
+        }
+
+        fn segment_count(&self) -> usize {
+            self.a.segment_count() + self.b.segment_count()
         }
     }
 

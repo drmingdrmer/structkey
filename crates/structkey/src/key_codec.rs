@@ -16,6 +16,13 @@ pub trait KeyCodec {
     /// Decode fields of the structured key from a key parser.
     fn decode_key(parser: &mut KeyParser) -> Result<Self, KeyError>
     where Self: Sized;
+
+    /// Number of segments this value contributes when encoded.
+    ///
+    /// Must equal the number of segments `encode_key` pushes onto the
+    /// builder. Truncation logic (e.g. `DirName`) and any future
+    /// segment-bounded encoding rely on this count being exact.
+    fn segment_count(&self) -> usize;
 }
 
 mod impls {
@@ -34,6 +41,10 @@ mod impls {
             let s = p.next_str()?;
             Ok(s)
         }
+
+        fn segment_count(&self) -> usize {
+            1
+        }
     }
 
     impl KeyCodec for u64 {
@@ -45,6 +56,10 @@ mod impls {
         where Self: Sized {
             let s = p.next_u64()?;
             Ok(s)
+        }
+
+        fn segment_count(&self) -> usize {
+            1
         }
     }
 
@@ -65,6 +80,10 @@ mod impls {
                 reason: format!("value {} does not fit in u32", n),
             })
         }
+
+        fn segment_count(&self) -> usize {
+            1
+        }
     }
 
     impl KeyCodec for () {
@@ -75,6 +94,10 @@ mod impls {
         fn decode_key(_p: &mut KeyParser) -> Result<Self, KeyError>
         where Self: Sized {
             Ok(())
+        }
+
+        fn segment_count(&self) -> usize {
+            0
         }
     }
 }
@@ -119,5 +142,14 @@ mod tests {
         assert_eq!(encoded, "");
         let mut p = KeyParser::new(&encoded);
         <()>::decode_key(&mut p).unwrap();
+    }
+
+    #[test]
+    fn test_segment_counts() {
+        assert_eq!(1, "anything".to_string().segment_count());
+        assert_eq!(1, 0u64.segment_count());
+        assert_eq!(1, u64::MAX.segment_count());
+        assert_eq!(1, 0u32.segment_count());
+        assert_eq!(0, ().segment_count());
     }
 }
