@@ -18,3 +18,5 @@ pub use key_error::KeyError;
 pub use key_parser::KeyParser;
 pub use raw::Raw;
 pub use struct_key::StructKey;
+#[cfg(feature = "derive")]
+pub use structkey_derive::KeyCodec;
