@@ -4,9 +4,11 @@
 
 mod helper;
 mod key_builder;
+mod key_codec;
 mod key_error;
 mod key_parser;
 
 pub use key_builder::KeyBuilder;
+pub use key_codec::KeyCodec;
 pub use key_error::KeyError;
 pub use key_parser::KeyParser;
