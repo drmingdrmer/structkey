@@ -164,13 +164,17 @@ pub fn derive_key_codec(input: TokenStream) -> TokenStream {
 /// - **Direct dep, possibly renamed.** `proc-macro-crate` returns the
 ///   consumer's extern name (e.g. `mykey` for
 ///   `mykey = { package = "structkey" }`). Macro emits `::mykey::*`.
-/// - **Self.** When invoked inside `structkey` itself, emits `crate::*`.
+/// - **Self.** When invoked inside `structkey` itself (in-crate tests
+///   and doctests), emits `::structkey::*`. The crate aliases itself
+///   with `extern crate self as structkey;` at the lib root, so this
+///   path resolves both inside the crate and in doctests (which link
+///   `structkey` as an external dep).
 /// - **No direct dep.** Falls back to `::structkey::*`. If that name
 ///   resolves nowhere, the compiler's "crate not found" error points
 ///   at a recognisable path.
 fn structkey_root() -> TokenStream2 {
     match crate_name("structkey") {
-        Ok(FoundCrate::Itself) => quote! { crate },
+        Ok(FoundCrate::Itself) => quote! { ::structkey },
         Ok(FoundCrate::Name(name)) => {
             let ident = Ident::new(&name, Span::call_site());
             quote! { ::#ident }
