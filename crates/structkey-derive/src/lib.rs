@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-//! Derive macro for [`structkey::KeyCodec`].
+//! Derive macro for `structkey::KeyCodec`.
 //!
 //! See the `structkey` crate for usage; this crate is re-exported there
 //! behind the `derive` feature (default-on).

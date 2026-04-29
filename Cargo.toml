@@ -1,9 +1,6 @@
 [workspace]
 resolver = "2"
-members = [
-    "crates/structkey",
-    "crates/structkey-derive",
-]
+members = ["crates/structkey", "crates/structkey-derive"]
 
 [workspace.package]
 version = "0.1.0"
