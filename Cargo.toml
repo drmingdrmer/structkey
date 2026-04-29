@@ -16,6 +16,7 @@ structkey = { version = "0.1.0", path = "crates/structkey" }
 structkey-derive = { version = "0.1.0", path = "crates/structkey-derive" }
 
 # External
+anyhow = "1"
 proc-macro-crate = "3"
 proc-macro2 = "1"
 quote = "1"

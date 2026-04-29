@@ -16,9 +16,11 @@
 //!
 //! See the README at the repo root for an overview.
 
-// TODO: drop `allow(dead_code)` once `key_builder` / `key_parser` consume these.
-#[allow(dead_code)]
 mod helper;
+mod key_builder;
 mod key_error;
+mod key_parser;
 
+pub use key_builder::KeyBuilder;
 pub use key_error::KeyError;
+pub use key_parser::KeyParser;
