@@ -13,16 +13,17 @@ setup:
 	cargo install cargo-nextest --locked
 	cargo install cargo-llvm-cov --locked
 
-# Formatting
+# Formatting (mutates files; for local use)
 fmt:
 	cargo fmt --all
 	taplo fmt
 
-# Linting
-lint: fmt
+# Linting (read-only checks; safe for CI)
+lint:
+	cargo fmt --all -- --check
 	cargo clippy --workspace --all-targets -- -D warnings
-	cargo machete
-	cargo doc --workspace --no-deps
+	taplo fmt --check
+	RUSTDOCFLAGS="-D warnings" cargo doc --workspace --no-deps
 	typos
 
 # Type checking
