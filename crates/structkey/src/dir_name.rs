@@ -60,34 +60,23 @@ where K: StructKey
 }
 
 impl<K: KeyCodec> KeyCodec for DirName<K> {
-    /// Encode the inner key and push only the first
-    /// `key.segment_count() - level` segments onto `b`. Encoding produces
-    /// a complete K string first; truncation then slices off the tail
-    /// without an extra allocation.
-    fn encode_key(&self, b: KeyBuilder) -> KeyBuilder {
-        let kept = self.segment_count();
-        if kept == 0 {
-            return b;
-        }
-        let k_encoded = self.key.encode_key(KeyBuilder::new()).done();
-        // Position of the `kept`-th `/`, or end-of-string if there are
-        // fewer separators than that. Slicing up to that index keeps
-        // exactly `kept` segments.
-        let cut_at = k_encoded
-            .match_indices('/')
-            .nth(kept - 1)
-            .map(|(i, _)| i)
-            .unwrap_or(k_encoded.len());
-        b.push_raw(&k_encoded[..cut_at])
+    /// Encode at most `min(n, self.segment_count())` segments by asking
+    /// the inner `K` for that many. K honours the limit, so trailing
+    /// fields are never encoded.
+    fn encode_key(&self, b: KeyBuilder, n: usize) -> KeyBuilder {
+        self.key.encode_key(b, n.min(self.segment_count()))
     }
 
-    /// Consume `K`'s segments from the parser and wrap the result at
-    /// level 0 -- i.e. a `DirName` whose `to_string_key` reproduces the
-    /// just-parsed input. Callers that want a truncated form adjust the
-    /// level afterwards.
-    fn decode_key(p: &mut KeyParser) -> Result<Self, KeyError> {
-        let k = K::decode_key(p)?;
-        Ok(DirName::new_with_level(k, 0))
+    /// `DirName` is a print-only view of a key; it does not round-trip
+    /// through a string, so decoding always fails.
+    ///
+    /// `from_str_key` therefore returns this error too. Callers that need
+    /// a `K` from a string call `K::from_str_key` directly, then wrap
+    /// the result in `DirName::new` / `new_with_level`.
+    fn decode_key(_p: &mut KeyParser) -> Result<Self, KeyError> {
+        Err(KeyError::NotDecodable {
+            type_name: std::any::type_name::<Self>(),
+        })
     }
 
     fn segment_count(&self) -> usize {
@@ -111,8 +100,12 @@ mod tests {
     }
 
     impl KeyCodec for Foo {
-        fn encode_key(&self, b: KeyBuilder) -> KeyBuilder {
-            self.c.encode_key(self.b.encode_key(self.a.encode_key(b)))
+        fn encode_key(&self, b: KeyBuilder, n: usize) -> KeyBuilder {
+            let b = self.a.encode_key(b, n);
+            let n = n.saturating_sub(self.a.segment_count());
+            let b = self.b.encode_key(b, n);
+            let n = n.saturating_sub(self.b.segment_count());
+            self.c.encode_key(b, n)
         }
 
         fn decode_key(p: &mut KeyParser) -> Result<Self, KeyError> {
@@ -133,16 +126,9 @@ mod tests {
     }
 
     #[test]
-    fn from_str_key_round_trips_at_level_zero() {
-        let d = DirName::<Foo>::from_str_key("pref/9/x/8").unwrap();
-        assert_eq!(
-            Foo {
-                a: 9,
-                b: "x".to_string(),
-                c: 8,
-            },
-            d.into_key()
-        );
+    fn from_str_key_returns_not_decodable() {
+        let err = DirName::<Foo>::from_str_key("pref/9/x/8").unwrap_err();
+        assert!(matches!(err, KeyError::NotDecodable { .. }));
     }
 
     #[test]
@@ -203,6 +189,24 @@ mod tests {
         };
         let dir = DirName::new(k);
         assert_eq!("pref/1/b/", dir.dir_name_with_slash());
+    }
+
+    #[test]
+    fn encode_key_self_clamps_to_segment_count() {
+        let k = Foo {
+            a: 1,
+            b: "b".to_string(),
+            c: 2,
+        };
+        let dir = DirName::new(k); // level 1, segment_count 2
+
+        // The caller asks for 99 segments; DirName self-clamps to its own
+        // segment_count (2), so K is called with n = 2 and emits exactly
+        // 2 segments. This is what makes DirName safe to embed as a field
+        // in a larger key: a parent that passes a wide `n` cannot make
+        // DirName over-emit.
+        let s = dir.encode_key(KeyBuilder::new(), 99).done();
+        assert_eq!("1/b", s);
     }
 
     #[test]

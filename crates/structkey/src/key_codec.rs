@@ -10,18 +10,29 @@ use crate::KeyParser;
 /// hand-written or derived impl looks like a sequence of `encode_key` /
 /// `decode_key` calls — one per field, in declaration order.
 pub trait KeyCodec {
-    /// Encode fields of the structured key into a key builder.
-    fn encode_key(&self, b: KeyBuilder) -> KeyBuilder;
+    /// Encode fields of the structured key into a key builder, pushing
+    /// at most `n` segments.
+    ///
+    /// Pass `usize::MAX` (or any number at or above `self.segment_count()`)
+    /// for the full encoding. Limited encoding is what types like
+    /// `DirName` use to skip trailing fields.
+    ///
+    /// Single-segment primitives interpret this as binary: `n == 0` means
+    /// push nothing; `n >= 1` means push the segment. Aggregate impls
+    /// thread `n` through their fields, decrementing by each field's
+    /// `segment_count()`.
+    fn encode_key(&self, b: KeyBuilder, n: usize) -> KeyBuilder;
 
     /// Decode fields of the structured key from a key parser.
     fn decode_key(parser: &mut KeyParser) -> Result<Self, KeyError>
     where Self: Sized;
 
-    /// Number of segments this value contributes when encoded.
+    /// Number of segments this value contributes when fully encoded.
     ///
-    /// Must equal the number of segments `encode_key` pushes onto the
-    /// builder. Truncation logic (e.g. `DirName`) and any future
-    /// segment-bounded encoding rely on this count being exact.
+    /// Must equal the number of segments
+    /// `encode_key(b, usize::MAX)` pushes onto the builder. Truncation
+    /// logic (e.g. `DirName`) and segment-bounded encoding rely on this
+    /// count being exact.
     fn segment_count(&self) -> usize;
 }
 
@@ -32,8 +43,8 @@ mod impls {
     use crate::KeyParser;
 
     impl KeyCodec for String {
-        fn encode_key(&self, b: KeyBuilder) -> KeyBuilder {
-            b.push_str(self)
+        fn encode_key(&self, b: KeyBuilder, n: usize) -> KeyBuilder {
+            if n == 0 { b } else { b.push_str(self) }
         }
 
         fn decode_key(p: &mut KeyParser) -> Result<Self, KeyError>
@@ -48,8 +59,8 @@ mod impls {
     }
 
     impl KeyCodec for u64 {
-        fn encode_key(&self, b: KeyBuilder) -> KeyBuilder {
-            b.push_u64(*self)
+        fn encode_key(&self, b: KeyBuilder, n: usize) -> KeyBuilder {
+            if n == 0 { b } else { b.push_u64(*self) }
         }
 
         fn decode_key(p: &mut KeyParser) -> Result<Self, KeyError>
@@ -68,8 +79,8 @@ mod impls {
     /// truncating, so a key crafted with an out-of-range integer fails fast
     /// instead of round-tripping to a different value.
     impl KeyCodec for u32 {
-        fn encode_key(&self, b: KeyBuilder) -> KeyBuilder {
-            b.push_u64(*self as u64)
+        fn encode_key(&self, b: KeyBuilder, n: usize) -> KeyBuilder {
+            if n == 0 { b } else { b.push_u64(*self as u64) }
         }
 
         fn decode_key(p: &mut KeyParser) -> Result<Self, KeyError>
@@ -87,7 +98,7 @@ mod impls {
     }
 
     impl KeyCodec for () {
-        fn encode_key(&self, b: KeyBuilder) -> KeyBuilder {
+        fn encode_key(&self, b: KeyBuilder, _n: usize) -> KeyBuilder {
             b
         }
 
@@ -111,7 +122,7 @@ mod tests {
     #[test]
     fn test_string_round_trip() {
         let s = "hello world".to_string();
-        let encoded = s.encode_key(KeyBuilder::new()).done();
+        let encoded = s.encode_key(KeyBuilder::new(), usize::MAX).done();
         let mut p = KeyParser::new(&encoded);
         let decoded = String::decode_key(&mut p).unwrap();
         assert_eq!(s, decoded);
@@ -120,7 +131,7 @@ mod tests {
     #[test]
     fn test_string_with_special_chars() {
         let s = "a/b%c".to_string();
-        let encoded = s.encode_key(KeyBuilder::new()).done();
+        let encoded = s.encode_key(KeyBuilder::new(), usize::MAX).done();
         let mut p = KeyParser::new(&encoded);
         let decoded = String::decode_key(&mut p).unwrap();
         assert_eq!(s, decoded);
@@ -129,7 +140,7 @@ mod tests {
     #[test]
     fn test_u64_round_trip() {
         for v in [0u64, 1, 42, u64::MAX] {
-            let encoded = v.encode_key(KeyBuilder::new()).done();
+            let encoded = v.encode_key(KeyBuilder::new(), usize::MAX).done();
             let mut p = KeyParser::new(&encoded);
             let decoded = u64::decode_key(&mut p).unwrap();
             assert_eq!(v, decoded);
@@ -138,7 +149,7 @@ mod tests {
 
     #[test]
     fn test_unit_round_trip() {
-        let encoded = ().encode_key(KeyBuilder::new()).done();
+        let encoded = ().encode_key(KeyBuilder::new(), usize::MAX).done();
         assert_eq!(encoded, "");
         let mut p = KeyParser::new(&encoded);
         <()>::decode_key(&mut p).unwrap();
@@ -151,5 +162,15 @@ mod tests {
         assert_eq!(1, u64::MAX.segment_count());
         assert_eq!(1, 0u32.segment_count());
         assert_eq!(0, ().segment_count());
+    }
+
+    #[test]
+    fn test_encode_n_zero_pushes_nothing() {
+        let b = KeyBuilder::new();
+        let b = "abc".to_string().encode_key(b, 0);
+        let b = 99u64.encode_key(b, 0);
+        let b = 99u32.encode_key(b, 0);
+        let b = ().encode_key(b, 0);
+        assert_eq!("", b.done());
     }
 }

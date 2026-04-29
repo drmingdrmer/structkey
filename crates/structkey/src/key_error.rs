@@ -29,4 +29,7 @@ pub enum KeyError {
 
     #[error("Invalid percent-encoded sequence at byte {pos} in '{input}'")]
     InvalidEscape { pos: usize, input: String },
+
+    #[error("`{type_name}` does not support decoding from a key string")]
+    NotDecodable { type_name: &'static str },
 }
