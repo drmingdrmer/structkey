@@ -7,8 +7,10 @@ mod key_builder;
 mod key_codec;
 mod key_error;
 mod key_parser;
+mod raw;
 
 pub use key_builder::KeyBuilder;
 pub use key_codec::KeyCodec;
 pub use key_error::KeyError;
 pub use key_parser::KeyParser;
+pub use raw::Raw;
