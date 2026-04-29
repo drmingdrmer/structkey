@@ -1,0 +1,5 @@
+error: #[derive(KeyCodec)] supports only structs with named fields
+ --> tests/ui/enum_not_supported.rs:6:6
+  |
+6 | enum Bad {
+  |      ^^^

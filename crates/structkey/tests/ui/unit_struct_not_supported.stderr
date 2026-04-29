@@ -1,0 +1,5 @@
+error: #[derive(KeyCodec)] supports only structs with named fields
+ --> tests/ui/unit_struct_not_supported.rs:9:8
+  |
+9 | struct Bad;
+  |        ^^^
