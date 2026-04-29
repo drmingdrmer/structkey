@@ -1,0 +1,23 @@
+[package]
+name = "structkey"
+description = "Encode structured Rust types as /-separated, percent-escaped string keys, with #[derive(KeyCodec)] for zero-boilerplate round-trips. Designed for use as KV-store key namespaces."
+version = { workspace = true }
+authors = { workspace = true }
+license = { workspace = true }
+edition = { workspace = true }
+repository = { workspace = true }
+homepage = { workspace = true }
+keywords = ["key", "codec", "kv-store", "derive"]
+categories = ["encoding", "data-structures"]
+readme = "../../README.md"
+
+[features]
+default = ["derive"]
+derive = ["dep:structkey-derive"]
+
+[dependencies]
+structkey-derive = { workspace = true, optional = true }
+thiserror = { workspace = true }
+
+[dev-dependencies]
+trybuild = { workspace = true }
