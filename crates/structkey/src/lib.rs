@@ -15,3 +15,10 @@
 //! Encode structured Rust types as `/`-separated, percent-escaped string keys.
 //!
 //! See the README at the repo root for an overview.
+
+// TODO: drop `allow(dead_code)` once `key_builder` / `key_parser` consume these.
+#[allow(dead_code)]
+mod helper;
+mod key_error;
+
+pub use key_error::KeyError;
