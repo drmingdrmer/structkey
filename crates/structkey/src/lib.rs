@@ -7,10 +7,10 @@
 //! # Quick start
 //!
 //! ```
-//! use structkey::KeyCodec;
+//! use structkey::Codec;
 //! use structkey::StructKey;
 //!
-//! #[derive(Debug, PartialEq, Eq, KeyCodec)]
+//! #[derive(Debug, PartialEq, Eq, Codec)]
 //! struct UserSession {
 //!     user_id: u64,
 //!     session: String,
@@ -32,17 +32,17 @@
 //!
 //! # Concepts
 //!
-//! - [`KeyCodec`] — how one logical field is encoded / decoded.
+//! - [`Codec`] — how one logical field is encoded / decoded.
 //! - [`StructKey`] — a constant `PREFIX` plus a sequence of fields,
 //!   producing the canonical `prefix/field1/.../fieldN` form.
 //! - [`Raw`] — a `String` newtype whose codec skips percent-escaping.
-//!   Available as a field type or via `#[key_codec(raw)]` on a
-//!   `String` field of a `#[derive(KeyCodec)]` struct.
+//!   Available as a field type or via `#[codec(raw)]` on a
+//!   `String` field of a `#[derive(Codec)]` struct.
 //! - [`DirName`] — a print-only view that drops trailing segments.
 //!   Useful for forming a parent prefix or list-prefix from any
 //!   structured key. Decoding a `DirName` is intentionally an error.
-//! - [`KeyBuilder`] / [`KeyParser`] — the byte-level building blocks.
-//! - [`KeyError`] — the crate's only error type.
+//! - [`Builder`] / [`Parser`] — the byte-level building blocks.
+//! - [`Error`] — the crate's only error type.
 //!
 //! # Escape policy
 //!
@@ -53,30 +53,30 @@
 //!
 //! # Cargo features
 //!
-//! - `derive` *(default)* — enables `#[derive(KeyCodec)]`. Disable with
+//! - `derive` *(default)* — enables `#[derive(Codec)]`. Disable with
 //!   `default-features = false` to avoid the proc-macro toolchain.
 
 // Alias the crate as `::structkey` so the derive macro can use the same
-// path (`::structkey::KeyCodec`, etc.) for in-crate doctests and
+// path (`::structkey::Codec`, etc.) for in-crate doctests and
 // external consumers, instead of branching on a `crate::*` form that
 // only works in one context.
 extern crate self as structkey;
 
+mod builder;
+mod codec;
 mod dir_name;
+mod error;
 mod helper;
-mod key_builder;
-mod key_codec;
-mod key_error;
-mod key_parser;
+mod parser;
 mod raw;
 mod struct_key;
 
+pub use builder::Builder;
+pub use codec::Codec;
 pub use dir_name::DirName;
-pub use key_builder::KeyBuilder;
-pub use key_codec::KeyCodec;
-pub use key_error::KeyError;
-pub use key_parser::KeyParser;
+pub use error::Error;
+pub use parser::Parser;
 pub use raw::Raw;
 pub use struct_key::StructKey;
 #[cfg(feature = "derive")]
-pub use structkey_derive::KeyCodec;
+pub use structkey_derive::Codec;

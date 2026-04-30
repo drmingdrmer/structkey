@@ -1,4 +1,4 @@
-use crate::KeyError;
+use crate::Error;
 
 /// Function that escapes special characters in a string.
 ///
@@ -56,7 +56,7 @@ pub(crate) fn escape_specified(key: &str, chars: &[u8]) -> String {
 /// let original_key = unescape(&key);
 /// assert_eq!(Ok("data_bend!!".to_string()), original_key);
 /// ```
-pub(crate) fn unescape(key: &str) -> Result<String, KeyError> {
+pub(crate) fn unescape(key: &str) -> Result<String, Error> {
     let mut new_key = Vec::with_capacity(key.len());
 
     let bytes = key.as_bytes();
@@ -66,16 +66,16 @@ pub(crate) fn unescape(key: &str) -> Result<String, KeyError> {
         match bytes[index] {
             b'%' => {
                 if index + 2 >= bytes.len() {
-                    return Err(KeyError::InvalidEscape {
+                    return Err(Error::InvalidEscape {
                         pos: index,
                         input: key.to_string(),
                     });
                 }
-                let hi = unhex(bytes[index + 1]).ok_or_else(|| KeyError::InvalidEscape {
+                let hi = unhex(bytes[index + 1]).ok_or_else(|| Error::InvalidEscape {
                     pos: index,
                     input: key.to_string(),
                 })?;
-                let lo = unhex(bytes[index + 2]).ok_or_else(|| KeyError::InvalidEscape {
+                let lo = unhex(bytes[index + 2]).ok_or_else(|| Error::InvalidEscape {
                     pos: index,
                     input: key.to_string(),
                 })?;
@@ -89,11 +89,11 @@ pub(crate) fn unescape(key: &str) -> Result<String, KeyError> {
         }
     }
 
-    String::from_utf8(new_key).map_err(KeyError::from)
+    String::from_utf8(new_key).map_err(Error::from)
 }
 
 /// Unescape only the specified `chars` in a string.
-pub(crate) fn unescape_specified(key: &str, chars: &[u8]) -> Result<String, KeyError> {
+pub(crate) fn unescape_specified(key: &str, chars: &[u8]) -> Result<String, Error> {
     let mut new_key = Vec::with_capacity(key.len());
 
     let bytes = key.as_bytes();
@@ -137,12 +137,12 @@ pub(crate) fn unescape_specified(key: &str, chars: &[u8]) -> Result<String, KeyE
         }
     }
 
-    String::from_utf8(new_key).map_err(KeyError::from)
+    String::from_utf8(new_key).map_err(Error::from)
 }
 
 /// Decode a string into u64 id.
-pub(crate) fn decode_id(s: &str) -> Result<u64, KeyError> {
-    let id = s.parse::<u64>().map_err(|e| KeyError::InvalidId {
+pub(crate) fn decode_id(s: &str) -> Result<u64, Error> {
+    let id = s.parse::<u64>().map_err(|e| Error::InvalidId {
         s: s.to_string(),
         reason: e.to_string(),
     })?;

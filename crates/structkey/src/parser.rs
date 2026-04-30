@@ -1,13 +1,13 @@
 use std::iter::Peekable;
 use std::str::Split;
 
-use crate::KeyError;
+use crate::Error;
 use crate::helper::decode_id;
 use crate::helper::unescape;
 use crate::helper::unescape_specified;
 
 /// A helper for parsing a string key into structured key.
-pub struct KeyParser<'s> {
+pub struct Parser<'s> {
     str_key: &'s str,
     /// The index of the next item to return.
     i: usize,
@@ -16,7 +16,7 @@ pub struct KeyParser<'s> {
     elements: Peekable<Split<'s, char>>,
 }
 
-impl<'s> KeyParser<'s> {
+impl<'s> Parser<'s> {
     /// Create a new parser, split the str key by delimiter `/`.
     pub fn new(source: &'s str) -> Self {
         Self {
@@ -28,7 +28,7 @@ impl<'s> KeyParser<'s> {
     }
 
     /// Similar to `new()` but expect the specified prefix as the first part.
-    pub fn new_prefixed(source: &'s str, prefix: &str) -> Result<Self, KeyError> {
+    pub fn new_prefixed(source: &'s str, prefix: &str) -> Result<Self, Error> {
         let mut s = Self::new(source);
         s.next_literal(prefix)?;
         Ok(s)
@@ -46,17 +46,17 @@ impl<'s> KeyParser<'s> {
     }
 
     /// Peek the next element in raw `&str` and expect it to be `expect`, without unescaping or decoding.
-    pub fn peek_literal(&mut self, expect: &str) -> Result<(), KeyError> {
+    pub fn peek_literal(&mut self, expect: &str) -> Result<(), Error> {
         let next = self
             .elements
             .peek()
-            .ok_or_else(|| KeyError::WrongNumberOfSegments {
+            .ok_or_else(|| Error::WrongNumberOfSegments {
                 expect: self.i,
                 got: self.str_key.to_string(),
             })?;
 
         if *next != expect {
-            return Err(KeyError::InvalidSegment {
+            return Err(Error::InvalidSegment {
                 i: self.i,
                 expect: expect.to_string(),
                 got: next.to_string(),
@@ -68,8 +68,8 @@ impl<'s> KeyParser<'s> {
 
     /// Pop the next element in raw `&str`, without unescaping or decoding.
     ///
-    /// If there is no more element, it returns KeyError::WrongNumberOfSegments.
-    pub fn next_raw(&mut self) -> Result<&'s str, KeyError> {
+    /// If there is no more element, it returns Error::WrongNumberOfSegments.
+    pub fn next_raw(&mut self) -> Result<&'s str, Error> {
         let elt = self.elements.next();
 
         if let Some(s) = elt {
@@ -77,7 +77,7 @@ impl<'s> KeyParser<'s> {
             self.index += s.len() + 1;
             Ok(s)
         } else {
-            Err(KeyError::WrongNumberOfSegments {
+            Err(Error::WrongNumberOfSegments {
                 // Expected length
                 expect: self.i + 1,
                 got: self.str_key.to_string(),
@@ -87,40 +87,40 @@ impl<'s> KeyParser<'s> {
 
     /// Pop the next element, unescape it, and require non-empty.
     ///
-    /// Returns `KeyError::EmptySegment` if the segment unescapes to an empty
+    /// Returns `Error::EmptySegment` if the segment unescapes to an empty
     /// string. Callers that need a typed non-empty wrapper can promote the
     /// returned `String` themselves.
-    pub fn next_nonempty(&mut self) -> Result<String, KeyError> {
+    pub fn next_nonempty(&mut self) -> Result<String, Error> {
         let elt = self.next_raw()?;
         let s = unescape(elt)?;
         if s.is_empty() {
-            return Err(KeyError::EmptySegment { i: self.i - 1 });
+            return Err(Error::EmptySegment { i: self.i - 1 });
         }
         Ok(s)
     }
 
     /// Pop the next element and unescape it.
-    pub fn next_str(&mut self) -> Result<String, KeyError> {
+    pub fn next_str(&mut self) -> Result<String, Error> {
         let elt = self.next_raw()?;
         let s = unescape(elt)?;
         Ok(s)
     }
 
     /// Pop the next element and parse it into a u64.
-    pub fn next_u64(&mut self) -> Result<u64, KeyError> {
+    pub fn next_u64(&mut self) -> Result<u64, Error> {
         let elt = self.next_raw()?;
         decode_id(elt)
     }
 
     /// Pop the next element that equals `expect`.
     ///
-    /// If there is no more element, or the popped element is different, it returns KeyError::WrongNumberOfSegments.
-    pub fn next_literal(&mut self, expect: &str) -> Result<(), KeyError> {
+    /// If there is no more element, or the popped element is different, it returns Error::WrongNumberOfSegments.
+    pub fn next_literal(&mut self, expect: &str) -> Result<(), Error> {
         let ith = self.i;
         let elt = self.next_raw()?;
 
         if elt != expect {
-            return Err(KeyError::InvalidSegment {
+            return Err(Error::InvalidSegment {
                 i: ith,
                 expect: expect.to_string(),
                 got: elt.to_string(),
@@ -131,7 +131,7 @@ impl<'s> KeyParser<'s> {
     }
 
     /// Return trailing raw string that is not processed.
-    pub fn tail_raw(&mut self) -> Result<&str, KeyError> {
+    pub fn tail_raw(&mut self) -> Result<&str, Error> {
         let index = self.index;
         let _ = self.next_raw()?;
 
@@ -141,13 +141,13 @@ impl<'s> KeyParser<'s> {
         Ok(&self.str_key[index..])
     }
 
-    /// Finish parsing, if there are ore elements left, it returns KeyError::WrongNumberOfSegments
-    pub fn done(&mut self) -> Result<(), KeyError> {
+    /// Finish parsing, if there are ore elements left, it returns Error::WrongNumberOfSegments
+    pub fn done(&mut self) -> Result<(), Error> {
         let ith = self.i;
         let elt = self.elements.next();
 
         if elt.is_some() {
-            return Err(KeyError::WrongNumberOfSegments {
+            return Err(Error::WrongNumberOfSegments {
                 expect: ith,
                 got: self.str_key.to_string(),
             });
@@ -156,32 +156,32 @@ impl<'s> KeyParser<'s> {
     }
 
     /// Re-export unescape()
-    pub fn unescape(s: &str) -> Result<String, KeyError> {
+    pub fn unescape(s: &str) -> Result<String, Error> {
         unescape(s)
     }
 
     /// Re-export unescape()
-    pub fn unescape_specified(s: &str, chars: &[u8]) -> Result<String, KeyError> {
+    pub fn unescape_specified(s: &str, chars: &[u8]) -> Result<String, Error> {
         unescape_specified(s, chars)
     }
 }
 
 #[cfg(test)]
 mod tests {
-    use crate::KeyError;
-    use crate::key_parser::KeyParser;
+    use crate::Error;
+    use crate::parser::Parser;
 
     #[test]
-    fn test_key_parser_new_prefixed() -> anyhow::Result<()> {
+    fn test_parser_new_prefixed() -> anyhow::Result<()> {
         {
             let s = "_foo/bar%20-/123";
-            let mut kp = KeyParser::new_prefixed(s, "_foo")?;
+            let mut kp = Parser::new_prefixed(s, "_foo")?;
             assert_eq!(Ok("bar%20-"), kp.next_raw());
         }
 
         {
             let s = "_foo/bar%20-/123";
-            let kp = KeyParser::new_prefixed(s, "bar");
+            let kp = Parser::new_prefixed(s, "bar");
             assert!(kp.is_err());
         }
 
@@ -189,10 +189,10 @@ mod tests {
     }
 
     #[test]
-    fn test_key_parser_next() -> anyhow::Result<()> {
+    fn test_parser_next() -> anyhow::Result<()> {
         let s = "_foo/bar%20-/123";
 
-        let mut kp = KeyParser::new(s);
+        let mut kp = Parser::new(s);
         assert_eq!(Ok("_foo"), kp.next_raw());
         assert_eq!(Ok("bar%20-"), kp.next_raw());
         assert_eq!(Ok("123"), kp.next_raw());
@@ -202,22 +202,22 @@ mod tests {
     }
 
     #[test]
-    fn test_key_parser_next_nonempty() -> anyhow::Result<()> {
+    fn test_parser_next_nonempty() -> anyhow::Result<()> {
         let s = "_foo/bar%21-//123";
 
-        let mut kp = KeyParser::new(s);
+        let mut kp = Parser::new(s);
         assert_eq!(Ok("_foo".to_string()), kp.next_nonempty());
         assert_eq!(Ok("bar!-".to_string()), kp.next_nonempty());
-        assert_eq!(Err(KeyError::EmptySegment { i: 2 }), kp.next_nonempty());
+        assert_eq!(Err(Error::EmptySegment { i: 2 }), kp.next_nonempty());
 
         Ok(())
     }
 
     #[test]
-    fn test_key_parser_next_str() -> anyhow::Result<()> {
+    fn test_parser_next_str() -> anyhow::Result<()> {
         let s = "_foo/bar%21-/123";
 
-        let mut kp = KeyParser::new(s);
+        let mut kp = Parser::new(s);
         assert_eq!(Ok("_foo".to_string()), kp.next_str());
         assert_eq!(Ok("bar!-".to_string()), kp.next_str());
 
@@ -225,10 +225,10 @@ mod tests {
     }
 
     #[test]
-    fn test_key_parser_next_u64() -> anyhow::Result<()> {
+    fn test_parser_next_u64() -> anyhow::Result<()> {
         let s = "_foo/bar%20-/123";
 
-        let mut kp = KeyParser::new(s);
+        let mut kp = Parser::new(s);
         assert!(kp.next_u64().is_err());
         assert!(kp.next_u64().is_err());
         assert_eq!(Ok(123), kp.next_u64());
@@ -237,10 +237,10 @@ mod tests {
     }
 
     #[test]
-    fn test_key_parser_next_literal() -> anyhow::Result<()> {
+    fn test_parser_next_literal() -> anyhow::Result<()> {
         let s = "_foo/bar%20-/123";
 
-        let mut kp = KeyParser::new(s);
+        let mut kp = Parser::new(s);
         assert!(kp.next_literal("_foo").is_ok());
         assert!(kp.next_literal("bar%20-").is_ok());
         assert!(kp.next_literal("foo").is_err());
@@ -250,29 +250,29 @@ mod tests {
     }
 
     #[test]
-    fn test_key_parser_tail() -> anyhow::Result<()> {
+    fn test_parser_tail() -> anyhow::Result<()> {
         let s = "_foo/bar%20-/123";
 
         {
-            let mut kp = KeyParser::new(s);
+            let mut kp = Parser::new(s);
             assert_eq!(Ok(s), kp.tail_raw());
             assert!(kp.done().is_ok());
         }
         {
-            let mut kp = KeyParser::new(s);
+            let mut kp = Parser::new(s);
             kp.next_raw()?;
             assert_eq!(Ok("bar%20-/123"), kp.tail_raw());
             assert!(kp.done().is_ok());
         }
         {
-            let mut kp = KeyParser::new(s);
+            let mut kp = Parser::new(s);
             kp.next_raw()?;
             kp.next_raw()?;
             assert_eq!(Ok("123"), kp.tail_raw());
             assert!(kp.done().is_ok());
         }
         {
-            let mut kp = KeyParser::new(s);
+            let mut kp = Parser::new(s);
             kp.next_raw()?;
             kp.next_raw()?;
             kp.next_raw()?;
@@ -284,10 +284,10 @@ mod tests {
     }
 
     #[test]
-    fn test_key_parser_done() -> anyhow::Result<()> {
+    fn test_parser_done() -> anyhow::Result<()> {
         let s = "_foo/bar%20-/123";
 
-        let mut kp = KeyParser::new(s);
+        let mut kp = Parser::new(s);
         assert!(kp.done().is_err());
         assert!(kp.next_literal("bar%20-").is_ok());
         assert!(kp.next_literal("123").is_ok());
@@ -297,10 +297,10 @@ mod tests {
     }
 
     #[test]
-    fn test_key_parser_peek_literal() -> anyhow::Result<()> {
+    fn test_parser_peek_literal() -> anyhow::Result<()> {
         let s = "_foo/bar%20-/123";
 
-        let mut kp = KeyParser::new(s);
+        let mut kp = Parser::new(s);
         assert!(kp.peek_literal("_foo").is_ok());
         assert_eq!(
             kp.peek_literal("bar").unwrap_err().to_string(),

@@ -3,9 +3,9 @@
 Encode structured Rust types as `/`-separated, percent-escaped string keys — designed as a string-key namespace abstraction for KV stores. A typed key becomes a deterministic, human-readable string; the same string round-trips back to the original value.
 
 ```rust
-use structkey::{KeyCodec, StructKey};
+use structkey::{Codec, StructKey};
 
-#[derive(Debug, PartialEq, Eq, KeyCodec)]
+#[derive(Debug, PartialEq, Eq, Codec)]
 struct UserSession {
     user_id: u64,
     session: String,
@@ -24,11 +24,11 @@ assert_eq!(s, parsed);
 
 ## What it does
 
-A `StructKey` is encoded as `prefix/field1/field2/.../fieldN`. Each field implements `KeyCodec`, which says how a single value is pushed onto a `KeyBuilder` and recovered from a `KeyParser`. The crate ships:
+A `StructKey` is encoded as `prefix/field1/field2/.../fieldN`. Each field implements `Codec`, which says how a single value is pushed onto a `Builder` and recovered from a `Parser`. The crate ships:
 
-- **`#[derive(KeyCodec)]`** for structs with named fields. Fields are encoded in declaration order; the derive sums each field's `segment_count` and threads the segment limit `n` through them so partial encoding works.
-- **Built-in `KeyCodec` impls** for `String` (percent-escapes special bytes), `u64` / `u32` (decimal), and `()` (zero-segment, useful for prefix-only keys).
-- **`Raw`**, a `String` newtype whose `KeyCodec` skips escaping. Use directly or via `#[key_codec(raw)]` on a `String` field. The caller is responsible for ensuring the value contains no `/`.
+- **`#[derive(Codec)]`** for structs with named fields. Fields are encoded in declaration order; the derive sums each field's `segment_count` and threads the segment limit `n` through them so partial encoding works.
+- **Built-in `Codec` impls** for `String` (percent-escapes special bytes), `u64` / `u32` (decimal), and `()` (zero-segment, useful for prefix-only keys).
+- **`Raw`**, a `String` newtype whose `Codec` skips escaping. Use directly or via `#[codec(raw)]` on a `String` field. The caller is responsible for ensuring the value contains no `/`.
 - **`DirName<K>`**, a print-only view that drops the trailing `level` segments — handy for forming a parent prefix or list-prefix from any structured key. Decoding a `DirName<K>` from a string is intentionally an error; decode `K` directly and wrap.
 
 ## Escape policy
@@ -37,7 +37,7 @@ A `StructKey` is encoded as `prefix/field1/field2/.../fieldN`. Each field implem
 
 ## Cargo features
 
-- `derive` *(default)* — enables `#[derive(KeyCodec)]`, re-exported from `structkey-derive`. Disable with `default-features = false` if you want to avoid the proc-macro toolchain.
+- `derive` *(default)* — enables `#[derive(Codec)]`, re-exported from `structkey-derive`. Disable with `default-features = false` if you want to avoid the proc-macro toolchain.
 
 ## License
 

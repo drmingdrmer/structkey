@@ -1,7 +1,7 @@
-//! Derive macro for `structkey::KeyCodec`.
+//! Derive macro for `structkey::Codec`.
 //!
-//! Generates a `KeyCodec` impl for a struct with named fields by
-//! delegating to each field's own `KeyCodec` impl, in declaration order.
+//! Generates a `Codec` impl for a struct with named fields by
+//! delegating to each field's own `Codec` impl, in declaration order.
 //! `encode_key` threads the segment limit `n` through fields,
 //! decrementing by each field's `segment_count`; `segment_count` returns
 //! the sum.
@@ -17,7 +17,7 @@
 //!
 //! # Field attributes
 //!
-//! - `#[key_codec(raw)]` — route the field through `Raw`'s `KeyCodec`
+//! - `#[codec(raw)]` — route the field through `Raw`'s `Codec`
 //!   impl, which uses `push_raw` / `next_raw` and skips percent-escaping.
 //!   Only valid on `String` fields; the value must not contain the
 //!   segment separator `/`.
@@ -36,8 +36,8 @@ use syn::Fields;
 use syn::Ident;
 use syn::parse_macro_input;
 
-#[proc_macro_derive(KeyCodec, attributes(key_codec))]
-pub fn derive_key_codec(input: TokenStream) -> TokenStream {
+#[proc_macro_derive(Codec, attributes(codec))]
+pub fn derive_codec(input: TokenStream) -> TokenStream {
     let input = parse_macro_input!(input as DeriveInput);
 
     let fields = match &input.data {
@@ -48,7 +48,7 @@ pub fn derive_key_codec(input: TokenStream) -> TokenStream {
         _ => {
             return syn::Error::new_spanned(
                 &input.ident,
-                "#[derive(KeyCodec)] supports only structs with named fields",
+                "#[derive(Codec)] supports only structs with named fields",
             )
             .to_compile_error()
             .into();
@@ -81,12 +81,12 @@ pub fn derive_key_codec(input: TokenStream) -> TokenStream {
                 quote! { &self.#name }
             };
             let encode = quote! {
-                let b = #kv::KeyCodec::encode_key(#receiver, b, n);
+                let b = #kv::Codec::encode_key(#receiver, b, n);
             };
             if i + 1 < n_fields {
                 quote! {
                     #encode
-                    let n = n.saturating_sub(#kv::KeyCodec::segment_count(#receiver));
+                    let n = n.saturating_sub(#kv::Codec::segment_count(#receiver));
                 }
             } else {
                 encode
@@ -101,9 +101,9 @@ pub fn derive_key_codec(input: TokenStream) -> TokenStream {
             let name = f.ident.as_ref().unwrap();
             if raw {
                 // Decode as `Raw`, then unwrap to the underlying `String`.
-                quote! { let #name = <#kv::Raw as #kv::KeyCodec>::decode_key(p)?.into_inner(); }
+                quote! { let #name = <#kv::Raw as #kv::Codec>::decode_key(p)?.into_inner(); }
             } else {
-                quote! { let #name = #kv::KeyCodec::decode_key(p)?; }
+                quote! { let #name = #kv::Codec::decode_key(p)?; }
             }
         })
         .collect();
@@ -117,9 +117,9 @@ pub fn derive_key_codec(input: TokenStream) -> TokenStream {
             .map(|(f, &raw)| {
                 let name = f.ident.as_ref().unwrap();
                 if raw {
-                    quote! { #kv::KeyCodec::segment_count(#kv::Raw::from_ref(&self.#name)) }
+                    quote! { #kv::Codec::segment_count(#kv::Raw::from_ref(&self.#name)) }
                 } else {
-                    quote! { #kv::KeyCodec::segment_count(&self.#name) }
+                    quote! { #kv::Codec::segment_count(&self.#name) }
                 }
             })
             .collect();
@@ -131,19 +131,19 @@ pub fn derive_key_codec(input: TokenStream) -> TokenStream {
 
     let expanded = quote! {
         #[automatically_derived]
-        impl #impl_generics #kv::KeyCodec
+        impl #impl_generics #kv::Codec
             for #name #ty_generics #where_clause
         {
             #[allow(unused_variables, clippy::let_and_return)]
-            fn encode_key(&self, b: #kv::KeyBuilder, n: usize) -> #kv::KeyBuilder {
+            fn encode_key(&self, b: #kv::Builder, n: usize) -> #kv::Builder {
                 #(#encode_stmts)*
                 b
             }
 
             #[allow(unused_variables)]
             fn decode_key(
-                p: &mut #kv::KeyParser,
-            ) -> ::std::result::Result<Self, #kv::KeyError>
+                p: &mut #kv::Parser,
+            ) -> ::std::result::Result<Self, #kv::Error>
             where Self: Sized
             {
                 #(#decode_lets)*
@@ -183,15 +183,15 @@ fn structkey_root() -> TokenStream2 {
     }
 }
 
-/// Returns `Ok(true)` if the field carries `#[key_codec(raw)]`.
+/// Returns `Ok(true)` if the field carries `#[codec(raw)]`.
 ///
 /// Returns `Err` for any unknown sub-option, so typos like
-/// `#[key_codec(rwa)]` fail loudly instead of silently behaving as
+/// `#[codec(rwa)]` fail loudly instead of silently behaving as
 /// "not raw".
 fn check_raw(field: &Field) -> syn::Result<bool> {
     let mut found = false;
     for attr in &field.attrs {
-        if !attr.path().is_ident("key_codec") {
+        if !attr.path().is_ident("codec") {
             continue;
         }
         attr.parse_nested_meta(|meta| {
@@ -199,7 +199,7 @@ fn check_raw(field: &Field) -> syn::Result<bool> {
                 found = true;
                 Ok(())
             } else {
-                Err(meta.error("unknown #[key_codec] option; expected `raw`"))
+                Err(meta.error("unknown #[codec] option; expected `raw`"))
             }
         })?;
     }

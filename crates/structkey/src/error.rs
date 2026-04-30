@@ -1,7 +1,7 @@
 use std::string::FromUtf8Error;
 
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
-pub enum KeyError {
+pub enum Error {
     #[error(transparent)]
     FromUtf8Error(#[from] FromUtf8Error),
 

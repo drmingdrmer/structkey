@@ -8,10 +8,10 @@
 //! Truncation is clamped at the prefix: a level that exceeds the segment
 //! count returns just `K::PREFIX`.
 
-use crate::KeyBuilder;
-use crate::KeyCodec;
-use crate::KeyError;
-use crate::KeyParser;
+use crate::Builder;
+use crate::Codec;
+use crate::Error;
+use crate::Parser;
 use crate::StructKey;
 
 /// A view of a `StructKey` truncated to its first `n` segments, where
@@ -59,11 +59,11 @@ where K: StructKey
     }
 }
 
-impl<K: KeyCodec> KeyCodec for DirName<K> {
+impl<K: Codec> Codec for DirName<K> {
     /// Encode at most `min(n, self.segment_count())` segments by asking
     /// the inner `K` for that many. K honours the limit, so trailing
     /// fields are never encoded.
-    fn encode_key(&self, b: KeyBuilder, n: usize) -> KeyBuilder {
+    fn encode_key(&self, b: Builder, n: usize) -> Builder {
         self.key.encode_key(b, n.min(self.segment_count()))
     }
 
@@ -73,8 +73,8 @@ impl<K: KeyCodec> KeyCodec for DirName<K> {
     /// `from_str_key` therefore returns this error too. Callers that need
     /// a `K` from a string call `K::from_str_key` directly, then wrap
     /// the result in `DirName::new` / `new_with_level`.
-    fn decode_key(_p: &mut KeyParser) -> Result<Self, KeyError> {
-        Err(KeyError::NotDecodable {
+    fn decode_key(_p: &mut Parser) -> Result<Self, Error> {
+        Err(Error::NotDecodable {
             type_name: std::any::type_name::<Self>(),
         })
     }
@@ -99,8 +99,8 @@ mod tests {
         c: u64,
     }
 
-    impl KeyCodec for Foo {
-        fn encode_key(&self, b: KeyBuilder, n: usize) -> KeyBuilder {
+    impl Codec for Foo {
+        fn encode_key(&self, b: Builder, n: usize) -> Builder {
             let b = self.a.encode_key(b, n);
             let n = n.saturating_sub(self.a.segment_count());
             let b = self.b.encode_key(b, n);
@@ -108,7 +108,7 @@ mod tests {
             self.c.encode_key(b, n)
         }
 
-        fn decode_key(p: &mut KeyParser) -> Result<Self, KeyError> {
+        fn decode_key(p: &mut Parser) -> Result<Self, Error> {
             Ok(Foo {
                 a: u64::decode_key(p)?,
                 b: String::decode_key(p)?,
@@ -128,7 +128,7 @@ mod tests {
     #[test]
     fn from_str_key_returns_not_decodable() {
         let err = DirName::<Foo>::from_str_key("pref/9/x/8").unwrap_err();
-        assert!(matches!(err, KeyError::NotDecodable { .. }));
+        assert!(matches!(err, Error::NotDecodable { .. }));
     }
 
     #[test]
@@ -205,7 +205,7 @@ mod tests {
         // 2 segments. This is what makes DirName safe to embed as a field
         // in a larger key: a parent that passes a wide `n` cannot make
         // DirName over-emit.
-        let s = dir.encode_key(KeyBuilder::new(), 99).done();
+        let s = dir.encode_key(Builder::new(), 99).done();
         assert_eq!("1/b", s);
     }
 

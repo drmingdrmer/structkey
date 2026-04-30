@@ -3,11 +3,11 @@
 use crate::helper::escape;
 use crate::helper::escape_specified;
 
-pub struct KeyBuilder {
+pub struct Builder {
     buf: Vec<u8>,
 }
 
-impl KeyBuilder {
+impl Builder {
     #[allow(clippy::new_without_default)]
     pub fn new() -> Self {
         Self { buf: Vec::new() }
@@ -53,11 +53,11 @@ impl KeyBuilder {
 
 #[cfg(test)]
 mod tests {
-    use crate::key_builder::KeyBuilder;
+    use crate::builder::Builder;
 
     #[test]
-    fn test_key_builder() -> anyhow::Result<()> {
-        let s = KeyBuilder::new_prefixed("_foo")
+    fn test_builder() -> anyhow::Result<()> {
+        let s = Builder::new_prefixed("_foo")
             .push_str("a b")
             .push_u64(5)
             .push_raw("a b")

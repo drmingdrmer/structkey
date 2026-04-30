@@ -1,5 +1,5 @@
-error: unknown #[key_codec] option; expected `raw`
- --> tests/ui/raw_unknown_option.rs:9:17
+error: unknown #[codec] option; expected `raw`
+ --> tests/ui/raw_unknown_option.rs:9:13
   |
-9 |     #[key_codec(rwa)]
-  |                 ^^^
+9 |     #[codec(rwa)]
+  |             ^^^

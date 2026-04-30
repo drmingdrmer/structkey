@@ -1,22 +1,22 @@
 //! Trait for whole structured keys.
 //!
-//! While [`KeyCodec`] describes how a single field is encoded into and
+//! While [`Codec`] describes how a single field is encoded into and
 //! decoded from a string, `StructKey` describes the whole key: it adds a
-//! constant `PREFIX` and exact-segment-count framing on top of `KeyCodec`,
+//! constant `PREFIX` and exact-segment-count framing on top of `Codec`,
 //! producing the canonical `prefix/field1/field2/.../fieldN` form.
 
-use crate::KeyBuilder;
-use crate::KeyCodec;
-use crate::KeyError;
-use crate::KeyParser;
+use crate::Builder;
+use crate::Codec;
+use crate::Error;
+use crate::Parser;
 
-/// A structured key: a constant `PREFIX` plus a sequence of `KeyCodec` fields.
+/// A structured key: a constant `PREFIX` plus a sequence of `Codec` fields.
 ///
-/// The default `to_string_key` / `from_str_key` impls compose `KeyCodec` with
+/// The default `to_string_key` / `from_str_key` impls compose `Codec` with
 /// `PREFIX`-framing and require the parser to be fully consumed, so a key
 /// that decodes successfully has exactly the segments the type expects --
 /// no more, no fewer.
-pub trait StructKey: KeyCodec
+pub trait StructKey: Codec
 where Self: Sized
 {
     /// The literal first segment of every encoded key of this type.
@@ -28,7 +28,7 @@ where Self: Sized
     /// `encode_key` would emit more than `segment_count` claims still
     /// produces an output with the declared segment count.
     fn to_string_key(&self) -> String {
-        let b = KeyBuilder::new_prefixed(Self::PREFIX);
+        let b = Builder::new_prefixed(Self::PREFIX);
         self.encode_key(b, self.segment_count()).done()
     }
 
@@ -36,8 +36,8 @@ where Self: Sized
     ///
     /// Fails if the prefix does not match, if any field fails to decode, or
     /// if extra trailing segments remain after all fields have been consumed.
-    fn from_str_key(s: &str) -> Result<Self, KeyError> {
-        let mut p = KeyParser::new_prefixed(s, Self::PREFIX)?;
+    fn from_str_key(s: &str) -> Result<Self, Error> {
+        let mut p = Parser::new_prefixed(s, Self::PREFIX)?;
         let k = Self::decode_key(&mut p)?;
         p.done()?;
 
@@ -52,12 +52,12 @@ mod tests {
     #[derive(Debug, PartialEq, Eq)]
     struct Empty;
 
-    impl KeyCodec for Empty {
-        fn encode_key(&self, b: KeyBuilder, _n: usize) -> KeyBuilder {
+    impl Codec for Empty {
+        fn encode_key(&self, b: Builder, _n: usize) -> Builder {
             b
         }
 
-        fn decode_key(_p: &mut KeyParser) -> Result<Self, KeyError> {
+        fn decode_key(_p: &mut Parser) -> Result<Self, Error> {
             Ok(Empty)
         }
 
@@ -76,14 +76,14 @@ mod tests {
         b: String,
     }
 
-    impl KeyCodec for Pair {
-        fn encode_key(&self, b: KeyBuilder, n: usize) -> KeyBuilder {
+    impl Codec for Pair {
+        fn encode_key(&self, b: Builder, n: usize) -> Builder {
             let b = self.a.encode_key(b, n);
             let n = n.saturating_sub(self.a.segment_count());
             self.b.encode_key(b, n)
         }
 
-        fn decode_key(p: &mut KeyParser) -> Result<Self, KeyError> {
+        fn decode_key(p: &mut Parser) -> Result<Self, Error> {
             Ok(Pair {
                 a: u64::decode_key(p)?,
                 b: String::decode_key(p)?,
@@ -138,14 +138,14 @@ mod tests {
         b: u64,
     }
 
-    impl KeyCodec for Underclaim {
-        fn encode_key(&self, b: KeyBuilder, n: usize) -> KeyBuilder {
+    impl Codec for Underclaim {
+        fn encode_key(&self, b: Builder, n: usize) -> Builder {
             let b = self.a.encode_key(b, n);
             let n = n.saturating_sub(self.a.segment_count());
             self.b.encode_key(b, n)
         }
 
-        fn decode_key(p: &mut KeyParser) -> Result<Self, KeyError> {
+        fn decode_key(p: &mut Parser) -> Result<Self, Error> {
             Ok(Underclaim {
                 a: u64::decode_key(p)?,
                 b: u64::decode_key(p)?,

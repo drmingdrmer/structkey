@@ -1,8 +1,8 @@
-//! `#[derive(KeyCodec)]` on a tuple struct must be rejected.
+//! `#[derive(Codec)]` on a tuple struct must be rejected.
 
-use structkey::KeyCodec;
+use structkey::Codec;
 
-#[derive(KeyCodec)]
+#[derive(Codec)]
 struct Bad(u64, String);
 
 fn main() {}

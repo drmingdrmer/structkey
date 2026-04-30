@@ -1,11 +1,11 @@
-//! `#[derive(KeyCodec)]` on a unit struct must be rejected.
+//! `#[derive(Codec)]` on a unit struct must be rejected.
 //!
 //! Unit structs (`struct Foo;`) have no fields. Use `struct Foo {}` if a
 //! field-less but otherwise normal struct is needed.
 
-use structkey::KeyCodec;
+use structkey::Codec;
 
-#[derive(KeyCodec)]
+#[derive(Codec)]
 struct Bad;
 
 fn main() {}

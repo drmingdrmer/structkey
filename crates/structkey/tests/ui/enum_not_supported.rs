@@ -1,8 +1,8 @@
-//! `#[derive(KeyCodec)]` on an enum must be rejected.
+//! `#[derive(Codec)]` on an enum must be rejected.
 
-use structkey::KeyCodec;
+use structkey::Codec;
 
-#[derive(KeyCodec)]
+#[derive(Codec)]
 enum Bad {
     A,
     B(u64),

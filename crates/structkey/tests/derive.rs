@@ -1,27 +1,27 @@
-//! Integration tests for `#[derive(KeyCodec)]`.
+//! Integration tests for `#[derive(Codec)]`.
 //!
 //! Lives under `tests/` so it links `structkey` as an external crate,
 //! exercising the derive the same way a downstream user would.
 
+use structkey::Builder;
+use structkey::Codec;
 use structkey::DirName;
-use structkey::KeyBuilder;
-use structkey::KeyCodec;
-use structkey::KeyError;
-use structkey::KeyParser;
+use structkey::Error;
+use structkey::Parser;
 use structkey::StructKey;
 
 fn round_trip<T>(value: T, expected: &str)
-where T: KeyCodec + PartialEq + std::fmt::Debug {
-    let encoded = value.encode_key(KeyBuilder::new(), usize::MAX).done();
+where T: Codec + PartialEq + std::fmt::Debug {
+    let encoded = value.encode_key(Builder::new(), usize::MAX).done();
     assert_eq!(expected, encoded, "encode mismatch");
 
-    let mut parser = KeyParser::new(&encoded);
+    let mut parser = Parser::new(&encoded);
     let decoded = T::decode_key(&mut parser).expect("decode");
     assert_eq!(value, decoded, "round-trip mismatch");
 }
 
 // Basic two-field struct.
-#[derive(Debug, PartialEq, Eq, KeyCodec)]
+#[derive(Debug, PartialEq, Eq, Codec)]
 struct Pair {
     name: String,
     id: u64,
@@ -60,7 +60,7 @@ fn pair_segment_count_sums_fields() {
 }
 
 // Single-field struct -- exercises the `let_and_return` shape.
-#[derive(Debug, PartialEq, Eq, KeyCodec)]
+#[derive(Debug, PartialEq, Eq, Codec)]
 struct Only {
     value: u64,
 }
@@ -71,7 +71,7 @@ fn only_single_field_round_trip() {
 }
 
 // Empty struct -- exercises the `unused_variables` allow on `n` and `p`.
-#[derive(Debug, PartialEq, Eq, KeyCodec)]
+#[derive(Debug, PartialEq, Eq, Codec)]
 struct Empty {}
 
 #[test]
@@ -85,7 +85,7 @@ fn empty_segment_count_is_zero() {
 }
 
 // Three-field struct, mixed types -- the typical "structured key" shape.
-#[derive(Debug, PartialEq, Eq, KeyCodec)]
+#[derive(Debug, PartialEq, Eq, Codec)]
 struct Triple {
     a: u64,
     b: String,
@@ -119,10 +119,10 @@ fn triple_works_under_dir_name() {
 }
 
 // Raw field -- bypasses percent-escaping.
-#[derive(Debug, PartialEq, Eq, KeyCodec)]
+#[derive(Debug, PartialEq, Eq, Codec)]
 struct WithRaw {
     a: u64,
-    #[key_codec(raw)]
+    #[codec(raw)]
     b: String,
 }
 
@@ -132,12 +132,12 @@ fn raw_field_skips_escape() {
         a: 1,
         b: "a b".to_string(), // a space would normally escape to %20
     };
-    let s = k.encode_key(KeyBuilder::new(), usize::MAX).done();
+    let s = k.encode_key(Builder::new(), usize::MAX).done();
     assert_eq!("1/a b", s);
 
     // Round-trip works because the parser splits on `/`, and `a b`
     // contains no `/`.
-    let mut parser = KeyParser::new(&s);
+    let mut parser = Parser::new(&s);
     let decoded = WithRaw::decode_key(&mut parser).unwrap();
     assert_eq!(k, decoded);
 }
@@ -151,26 +151,26 @@ fn encode_key_honours_n_limit() {
         b: "x".to_string(),
         c: 2,
     };
-    let s = k.encode_key(KeyBuilder::new(), 2).done();
+    let s = k.encode_key(Builder::new(), 2).done();
     assert_eq!("1/x", s);
 
-    let s = k.encode_key(KeyBuilder::new(), 1).done();
+    let s = k.encode_key(Builder::new(), 1).done();
     assert_eq!("1", s);
 
-    let s = k.encode_key(KeyBuilder::new(), 0).done();
+    let s = k.encode_key(Builder::new(), 0).done();
     assert_eq!("", s);
 }
 
 // Unknown attribute option fails compilation -- can't test directly
-// here without trybuild, but the `key_codec(raw)` path is exercised
+// here without trybuild, but the `codec(raw)` path is exercised
 // above. A trybuild compile-fail suite can be added later if needed.
 
-// `KeyError` import is exercised by `decode_key`'s signature in the
+// `Error` import is exercised by `decode_key`'s signature in the
 // generated impl; this assertion documents that the error type is
 // reachable from here.
 #[allow(dead_code)]
-fn _assert_key_error_is_reachable() {
-    fn _t() -> Result<(), KeyError> {
+fn _assert_error_is_reachable() {
+    fn _t() -> Result<(), Error> {
         Ok(())
     }
 }
