@@ -47,8 +47,8 @@ impl Raw {
 }
 
 impl Codec for Raw {
-    fn encode_key(&self, b: Builder, n: usize) -> Builder {
-        if n == 0 { b } else { b.push_raw(&self.0) }
+    fn encode_key(&self, b: Builder) -> Builder {
+        b.push_raw(&self.0)
     }
 
     fn decode_key(p: &mut Parser) -> Result<Self, Error>
@@ -78,7 +78,7 @@ mod tests {
     fn raw_skips_escape() {
         // A space would normally be escaped to `%20` by `push_str`.
         let r = Raw("a b".to_string());
-        let s = r.encode_key(Builder::new(), usize::MAX).done();
+        let s = r.encode_key(Builder::new()).done();
         assert_eq!("a b", s);
 
         let mut p = Parser::new(&s);

@@ -13,7 +13,7 @@ use structkey::StructKey;
 
 fn round_trip<T>(value: T, expected: &str)
 where T: Codec + PartialEq + std::fmt::Debug {
-    let encoded = value.encode_key(Builder::new(), usize::MAX).done();
+    let encoded = value.encode_key(Builder::new()).done();
     assert_eq!(expected, encoded, "encode mismatch");
 
     let mut parser = Parser::new(&encoded);
@@ -133,7 +133,7 @@ fn raw_field_skips_escape() {
         a: 1,
         b: "a b".to_string(), // a space would normally escape to %20
     };
-    let s = k.encode_key(Builder::new(), usize::MAX).done();
+    let s = k.encode_key(Builder::new()).done();
     assert_eq!("1/a b", s);
 
     // Round-trip works because the parser splits on `/`, and `a b`
@@ -143,22 +143,22 @@ fn raw_field_skips_escape() {
     assert_eq!(k, decoded);
 }
 
-// `n` parameter is honoured: limit emits fewer segments than the full
-// encoding, without involving DirName.
+// Builder's segment budget is honoured: capping the builder emits fewer
+// segments than the full encoding, without involving DirName.
 #[test]
-fn encode_key_honours_n_limit() {
+fn encode_key_honours_builder_budget() {
     let k = Triple {
         a: 1,
         b: "x".to_string(),
         c: 2,
     };
-    let s = k.encode_key(Builder::new(), 2).done();
+    let s = k.encode_key(Builder::new().limit_segments(2)).done();
     assert_eq!("1/x", s);
 
-    let s = k.encode_key(Builder::new(), 1).done();
+    let s = k.encode_key(Builder::new().limit_segments(1)).done();
     assert_eq!("1", s);
 
-    let s = k.encode_key(Builder::new(), 0).done();
+    let s = k.encode_key(Builder::new().limit_segments(0)).done();
     assert_eq!("", s);
 }
 

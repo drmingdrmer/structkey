@@ -63,33 +63,22 @@ pub fn derive_codec(input: TokenStream) -> TokenStream {
     };
 
     let kv = structkey_root();
-    let n_fields = fields.len();
 
-    // For each field: encode it with the current `n`. For all but the
-    // last field, follow with `let n = n.saturating_sub(field.segment_count())`
-    // so the next field sees a smaller allowance. The trailing field
-    // omits the `let n =`, since nothing reads `n` afterward.
+    // Each field encodes itself onto the running builder. The builder
+    // owns the segment budget, so fields don't need to thread a
+    // counter through the call chain.
     let encode_stmts: Vec<TokenStream2> = fields
         .iter()
         .zip(raw_flags.iter())
-        .enumerate()
-        .map(|(i, (f, &raw))| {
+        .map(|(f, &raw)| {
             let name = f.ident.as_ref().unwrap();
             let receiver = if raw {
                 quote! { #kv::Raw::from_ref(&self.#name) }
             } else {
                 quote! { &self.#name }
             };
-            let encode = quote! {
-                let b = #kv::Codec::encode_key(#receiver, b, n);
-            };
-            if i + 1 < n_fields {
-                quote! {
-                    #encode
-                    let n = n.saturating_sub(#kv::Codec::segment_count(#receiver));
-                }
-            } else {
-                encode
+            quote! {
+                let b = #kv::Codec::encode_key(#receiver, b);
             }
         })
         .collect();
@@ -135,7 +124,7 @@ pub fn derive_codec(input: TokenStream) -> TokenStream {
             for #name #ty_generics #where_clause
         {
             #[allow(unused_variables, clippy::let_and_return)]
-            fn encode_key(&self, b: #kv::Builder, n: usize) -> #kv::Builder {
+            fn encode_key(&self, b: #kv::Builder) -> #kv::Builder {
                 #(#encode_stmts)*
                 b
             }

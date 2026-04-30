@@ -60,11 +60,12 @@ where K: StructKey
 }
 
 impl<K: Codec> Codec for DirName<K> {
-    /// Encode at most `min(n, self.segment_count())` segments by asking
-    /// the inner `K` for that many. K honours the limit, so trailing
-    /// fields are never encoded.
-    fn encode_key(&self, b: Builder, n: usize) -> Builder {
-        self.key.encode_key(b, n.min(self.segment_count()))
+    /// Tighten the builder's segment budget to `self.segment_count()` and
+    /// hand it off to the inner `K`. Outer callers may have already
+    /// capped the builder; `Builder::limit_segments` takes the minimum,
+    /// so a parent's tighter cap still wins.
+    fn encode_key(&self, b: Builder) -> Builder {
+        self.key.encode_key(b.limit_segments(self.segment_count()))
     }
 
     /// `DirName` is a print-only view of a key; it does not round-trip
@@ -100,12 +101,10 @@ mod tests {
     }
 
     impl Codec for Foo {
-        fn encode_key(&self, b: Builder, n: usize) -> Builder {
-            let b = self.a.encode_key(b, n);
-            let n = n.saturating_sub(self.a.segment_count());
-            let b = self.b.encode_key(b, n);
-            let n = n.saturating_sub(self.b.segment_count());
-            self.c.encode_key(b, n)
+        fn encode_key(&self, b: Builder) -> Builder {
+            let b = self.a.encode_key(b);
+            let b = self.b.encode_key(b);
+            self.c.encode_key(b)
         }
 
         fn decode_key(p: &mut Parser) -> Result<Self, Error> {
@@ -200,12 +199,12 @@ mod tests {
         };
         let dir = DirName::new(k); // level 1, segment_count 2
 
-        // The caller asks for 99 segments; DirName self-clamps to its own
-        // segment_count (2), so K is called with n = 2 and emits exactly
-        // 2 segments. This is what makes DirName safe to embed as a field
-        // in a larger key: a parent that passes a wide `n` cannot make
-        // DirName over-emit.
-        let s = dir.encode_key(Builder::new(), 99).done();
+        // Outer builder is unbounded (default usize::MAX budget); DirName
+        // tightens it to its own segment_count (2) before handing it to
+        // K, so K emits exactly 2 segments. This is what makes DirName
+        // safe to embed as a field in a larger key: a parent's wide
+        // budget cannot make DirName over-emit.
+        let s = dir.encode_key(Builder::new()).done();
         assert_eq!("1/b", s);
     }
 

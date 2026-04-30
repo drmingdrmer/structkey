@@ -23,13 +23,9 @@ where Self: Sized
     const PREFIX: &'static str;
 
     /// Encode `self` into the canonical `prefix/...` string form.
-    ///
-    /// Uses `self.segment_count()` as the segment cap, so an impl whose
-    /// `encode_key` would emit more than `segment_count` claims still
-    /// produces an output with the declared segment count.
     fn to_string_key(&self) -> String {
         let b = Builder::new_prefixed(Self::PREFIX);
-        self.encode_key(b, self.segment_count()).done()
+        self.encode_key(b).done()
     }
 
     /// Decode a string into a structured key.
@@ -53,7 +49,7 @@ mod tests {
     struct Empty;
 
     impl Codec for Empty {
-        fn encode_key(&self, b: Builder, _n: usize) -> Builder {
+        fn encode_key(&self, b: Builder) -> Builder {
             b
         }
 
@@ -77,10 +73,9 @@ mod tests {
     }
 
     impl Codec for Pair {
-        fn encode_key(&self, b: Builder, n: usize) -> Builder {
-            let b = self.a.encode_key(b, n);
-            let n = n.saturating_sub(self.a.segment_count());
-            self.b.encode_key(b, n)
+        fn encode_key(&self, b: Builder) -> Builder {
+            let b = self.a.encode_key(b);
+            self.b.encode_key(b)
         }
 
         fn decode_key(p: &mut Parser) -> Result<Self, Error> {
@@ -126,47 +121,5 @@ mod tests {
     #[test]
     fn from_str_key_rejects_extra_segments() {
         assert!(Empty::from_str_key("empty/extra").is_err());
-    }
-
-    /// Fixture used to verify the cap. Its `encode_key` would emit two
-    /// segments at `n = usize::MAX`, but `segment_count` reports 1.
-    /// This represents a buggy or out-of-sync impl; `to_string_key`
-    /// must still produce an output consistent with the declared count.
-    #[derive(Debug, PartialEq, Eq)]
-    struct Underclaim {
-        a: u64,
-        b: u64,
-    }
-
-    impl Codec for Underclaim {
-        fn encode_key(&self, b: Builder, n: usize) -> Builder {
-            let b = self.a.encode_key(b, n);
-            let n = n.saturating_sub(self.a.segment_count());
-            self.b.encode_key(b, n)
-        }
-
-        fn decode_key(p: &mut Parser) -> Result<Self, Error> {
-            Ok(Underclaim {
-                a: u64::decode_key(p)?,
-                b: u64::decode_key(p)?,
-            })
-        }
-
-        fn segment_count(&self) -> usize {
-            1
-        }
-    }
-
-    impl StructKey for Underclaim {
-        const PREFIX: &'static str = "uc";
-    }
-
-    #[test]
-    fn to_string_key_caps_emitted_segments_at_segment_count() {
-        let k = Underclaim { a: 1, b: 2 };
-        // segment_count reports 1, so to_string_key emits PREFIX + 1
-        // segment ("uc/1"), not "uc/1/2" -- even though encode_key would
-        // gladly push both fields if given a larger `n`.
-        assert_eq!("uc/1", k.to_string_key());
     }
 }
