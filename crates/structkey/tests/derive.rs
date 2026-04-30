@@ -8,6 +8,7 @@ use structkey::Codec;
 use structkey::DirName;
 use structkey::Error;
 use structkey::Parser;
+use structkey::Raw;
 use structkey::StructKey;
 
 fn round_trip<T>(value: T, expected: &str)
@@ -173,4 +174,68 @@ fn _assert_error_is_reachable() {
     fn _t() -> Result<(), Error> {
         Ok(())
     }
+}
+
+// Decode failure: too few segments. `Pair` expects two; one is provided.
+// The derived `decode_key` propagates the parser's segment-count error
+// instead of producing a half-decoded value.
+#[test]
+fn decode_too_few_segments() {
+    let mut parser = Parser::new("alice");
+    let result = Pair::decode_key(&mut parser);
+    assert!(
+        matches!(result, Err(Error::WrongNumberOfSegments { .. })),
+        "expected WrongNumberOfSegments, got {:?}",
+        result,
+    );
+}
+
+// Decode failure: non-numeric input for a `u64` field. The `u64` codec
+// refuses to silently coerce; the derived impl surfaces the error.
+#[test]
+fn decode_non_numeric_for_u64_field() {
+    let mut parser = Parser::new("alice/notnum");
+    let result = Pair::decode_key(&mut parser);
+    assert!(result.is_err(), "expected decode error, got {:?}", result);
+}
+
+// Generic struct with a user-supplied `T: Codec` bound. Verifies
+// `split_for_impl()` propagates generics and the existing where-clause.
+// The derive does not auto-inject `T: Codec`; users declare it on the
+// struct.
+#[derive(Debug, PartialEq, Eq, Codec)]
+struct Generic<T: Codec> {
+    id: T,
+    suffix: String,
+}
+
+#[test]
+fn generic_with_string_param() {
+    round_trip(
+        Generic::<String> {
+            id: "abc".to_string(),
+            suffix: "x".to_string(),
+        },
+        "abc/x",
+    );
+}
+
+// `Raw` used directly as a field type (not via `#[codec(raw)]`). This
+// exercises a different branch in the derive — the field is encoded
+// through `Raw`'s own `Codec` impl without the `Raw::from_ref` shim.
+#[derive(Debug, PartialEq, Eq, Codec)]
+struct WithRawField {
+    id: u64,
+    tag: Raw,
+}
+
+#[test]
+fn raw_field_type_round_trip() {
+    round_trip(
+        WithRawField {
+            id: 7,
+            tag: Raw("hello world".to_string()),
+        },
+        "7/hello world",
+    );
 }
