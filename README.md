@@ -24,12 +24,34 @@ assert_eq!(s, parsed);
 
 ## What it does
 
-A `StructKey` is encoded as `prefix/field1/field2/.../fieldN`. Each field implements `Codec`, which says how a single value is pushed onto a `Builder` and recovered from a `Parser`. The crate ships:
+A `StructKey` is encoded as `prefix/field1/field2/.../fieldN`. Each field implements `Codec`, which says how a single value is pushed onto a `Builder` and recovered from a `Parser`. The `Builder` owns the segment budget internally, so codec impls don't have to thread a counter through fields. The crate ships:
 
-- **`#[derive(Codec)]`** for structs with named fields. Fields are encoded in declaration order; the derive sums each field's `segment_count` and threads the segment limit `n` through them so partial encoding works.
+- **`#[derive(Codec)]`** for structs with named fields and for enums (named, tuple, and unit variants). Fields are encoded in declaration order; for enums, the variant adds a leading discriminant segment.
 - **Built-in `Codec` impls** for `String` (percent-escapes special bytes), `u64` / `u32` (decimal), and `()` (zero-segment, useful for prefix-only keys).
 - **`Raw`**, a `String` newtype whose `Codec` skips escaping. Use directly or via `#[codec(raw)]` on a `String` field. The caller is responsible for ensuring the value contains no `/`.
 - **`DirName<K>`**, a print-only view that drops the trailing `level` segments — handy for forming a parent prefix or list-prefix from any structured key. Decoding a `DirName<K>` from a string is intentionally an error; decode `K` directly and wrap.
+
+## Enums
+
+Variants encode as `<discriminant>/<fields...>`. The discriminant is the variant name in `snake_case` by default — multi-word variants get a real separator (`TwoWords` → `two_words`, `RowAccessPolicy` → `row_access_policy`); pure acronyms collapse (`UDF` → `udf`); and acronym/word boundaries split (`XMLParser` → `xml_parser`).
+
+```rust
+#[derive(Debug, PartialEq, Eq, Codec)]
+enum Object {
+    Database { db_id: u64 },
+    #[codec(rename = "two-words")]
+    TwoWords(u64, String),
+    Unit,
+}
+```
+
+`#[codec(rename = "...")]` overrides the discriminant per variant. The value must be non-empty and must not contain `/` — both rejected at compile time.
+
+## PhantomData
+
+Fields whose type's last path segment is `PhantomData` are silently skipped: not encoded, not decoded, and contribute nothing to `segment_count`. This lets the derive cover marker-typed structs like `DataId<R> { id: u64, _p: PhantomData<R> }` without forcing the marker `R` to implement `Codec`.
+
+Detection is by the last path segment, so `PhantomData<R>`, `std::marker::PhantomData<R>`, and `core::marker::PhantomData<R>` are all recognised. A user-defined type literally named `PhantomData` would be a false positive — rename it or hand-write the impl.
 
 ## Escape policy
 
