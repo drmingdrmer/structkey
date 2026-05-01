@@ -1,0 +1,11 @@
+error: #[codec(rename = "...")] must not be empty
+  --> tests/ui/rename_invalid.rs:10:13
+   |
+10 |     #[codec(rename = "")]
+   |             ^^^^^^^^^^^
+
+error: #[codec(rename = "...")] must not contain '/' (segment separator)
+  --> tests/ui/rename_invalid.rs:16:13
+   |
+16 |     #[codec(rename = "a/b")]
+   |             ^^^^^^^^^^^^^^

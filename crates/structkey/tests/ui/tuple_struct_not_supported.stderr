@@ -1,4 +1,4 @@
-error: #[derive(Codec)] supports only structs with named fields
+error: #[derive(Codec)] supports structs with named fields and enums
  --> tests/ui/tuple_struct_not_supported.rs:6:8
   |
 6 | struct Bad(u64, String);

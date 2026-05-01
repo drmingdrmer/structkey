@@ -239,3 +239,155 @@ fn raw_field_type_round_trip() {
         "7/hello world",
     );
 }
+
+// Enum with all three variant shapes: named-field, tuple, unit. Each
+// variant is encoded as `<lowercased-ident>/<fields...>`. Verifies that
+// the discriminant segment lands first and that variants with different
+// segment counts round-trip correctly.
+#[derive(Debug, PartialEq, Eq, Codec)]
+enum Shape {
+    Named { id: u64, label: String },
+    Tuple(u64, String),
+    Unit,
+}
+
+#[test]
+fn enum_named_variant_round_trip() {
+    round_trip(
+        Shape::Named {
+            id: 7,
+            label: "alice".to_string(),
+        },
+        "named/7/alice",
+    );
+}
+
+#[test]
+fn enum_tuple_variant_round_trip() {
+    round_trip(Shape::Tuple(42, "bob".to_string()), "tuple/42/bob");
+}
+
+#[test]
+fn enum_unit_variant_round_trip() {
+    round_trip(Shape::Unit, "unit");
+}
+
+#[test]
+fn enum_segment_count_includes_discriminant() {
+    assert_eq!(
+        3,
+        Shape::Named {
+            id: 1,
+            label: "x".to_string()
+        }
+        .segment_count()
+    );
+    assert_eq!(3, Shape::Tuple(1, "x".to_string()).segment_count());
+    assert_eq!(1, Shape::Unit.segment_count());
+}
+
+#[test]
+fn enum_decode_unknown_discriminant() {
+    let mut parser = Parser::new("nope");
+    let result = Shape::decode_key(&mut parser);
+    match result {
+        Err(Error::InvalidSegment { expect, got, .. }) => {
+            assert_eq!("named|tuple|unit", expect);
+            assert_eq!("nope", got);
+        }
+        other => panic!("expected InvalidSegment, got {:?}", other),
+    }
+}
+
+// Enum with `#[codec(raw)]` on a variant field. Lowercasing the variant
+// ident yields `tag` so that's the discriminant; the field is pushed
+// raw, skipping the percent-escape on the space.
+#[derive(Debug, PartialEq, Eq, Codec)]
+enum Tagged {
+    Tag {
+        #[codec(raw)]
+        name: String,
+    },
+}
+
+#[test]
+fn enum_raw_variant_field_skips_escape() {
+    let v = Tagged::Tag {
+        name: "a b".to_string(),
+    };
+    round_trip(v, "tag/a b");
+}
+
+// Single-variant enum — verifies the macro accepts an enum with no
+// catch-all needed in practice (unknown discriminants still error).
+#[derive(Debug, PartialEq, Eq, Codec)]
+enum Singleton {
+    Only(u64),
+}
+
+#[test]
+fn enum_singleton_round_trip() {
+    round_trip(Singleton::Only(99), "only/99");
+}
+
+// Multi-word variants default to `snake_case`. Acronyms collapse
+// (`UDF` -> `udf`), and an acronym/word boundary still gets a separator
+// (`XMLParser` -> `xml_parser`). Use `#[codec(rename = "...")]` to
+// pick a non-snake separator.
+#[allow(clippy::upper_case_acronyms)] // testing acronym snake_case behavior
+#[derive(Debug, PartialEq, Eq, Codec)]
+enum MultiWord {
+    TwoWords { a: u64, b: u64 },
+    ThreeWordVariant(u64),
+    UDF,
+    XMLParser(u64),
+}
+
+#[test]
+fn enum_multi_word_variant_uses_snake_case() {
+    round_trip(MultiWord::TwoWords { a: 1, b: 2 }, "two_words/1/2");
+    round_trip(MultiWord::ThreeWordVariant(7), "three_word_variant/7");
+    round_trip(MultiWord::UDF, "udf");
+    round_trip(MultiWord::XMLParser(9), "xml_parser/9");
+}
+
+// Per-variant `#[codec(rename = "...")]` -- the escape hatch when the
+// default lowercase is wrong (existing wire format, want a separator,
+// or the variant's lowercase collides with another variant).
+#[derive(Debug, PartialEq, Eq, Codec)]
+enum WithRename {
+    #[codec(rename = "two-words")]
+    TwoWords {
+        a: u64,
+        b: u64,
+    },
+
+    #[codec(rename = "X")]
+    Alpha(u64),
+
+    Plain,
+}
+
+#[test]
+fn enum_rename_overrides_default_tag() {
+    round_trip(WithRename::TwoWords { a: 1, b: 2 }, "two-words/1/2");
+    round_trip(WithRename::Alpha(7), "X/7");
+    // Variants without `rename` still get the default lowercase.
+    round_trip(WithRename::Plain, "plain");
+}
+
+#[test]
+fn enum_rename_appears_in_decode_error_message() {
+    let mut parser = Parser::new("nope");
+    let err = WithRename::decode_key(&mut parser).unwrap_err();
+    match err {
+        Error::InvalidSegment { expect, got, .. } => {
+            // `expect` lists the *effective* tags (post-rename), not
+            // the raw idents -- otherwise the error would mislead
+            // anyone trying to construct a valid key.
+            assert_eq!("two-words|X|plain", expect);
+            assert_eq!("nope", got);
+        }
+        other => panic!("expected InvalidSegment, got {:?}", other),
+    }
+}
