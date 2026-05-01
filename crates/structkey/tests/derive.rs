@@ -3,6 +3,8 @@
 //! Lives under `tests/` so it links `structkey` as an external crate,
 //! exercising the derive the same way a downstream user would.
 
+use std::marker::PhantomData;
+
 use structkey::Builder;
 use structkey::Codec;
 use structkey::DirName;
@@ -374,6 +376,82 @@ fn enum_rename_overrides_default_tag() {
     round_trip(WithRename::Alpha(7), "X/7");
     // Variants without `rename` still get the default lowercase.
     round_trip(WithRename::Plain, "plain");
+}
+
+// Generic struct with a `PhantomData` marker. The marker type carries
+// no runtime data and gets silently skipped: not encoded, not decoded,
+// not counted -- which means it also can't be required to impl Codec.
+#[derive(Debug, PartialEq, Eq, Codec)]
+struct WithMarker<R> {
+    id: u64,
+    _p: PhantomData<R>,
+}
+
+// Marker type with no Codec impl. The derive must NOT auto-add an
+// `R: Codec` bound; if it did, this struct would fail to compile.
+#[derive(Debug, PartialEq, Eq)]
+struct NoCodecMarker;
+
+#[test]
+fn struct_with_phantom_data_skips_field() {
+    round_trip(
+        WithMarker::<NoCodecMarker> {
+            id: 42,
+            _p: PhantomData,
+        },
+        "42",
+    );
+    assert_eq!(
+        1,
+        WithMarker::<NoCodecMarker> {
+            id: 1,
+            _p: PhantomData,
+        }
+        .segment_count(),
+    );
+}
+
+// Two phantom fields side by side. Tests the all-skipped path of
+// segment_count_expr (must emit `0`, not an empty `+` chain).
+#[derive(Debug, PartialEq, Eq, Codec)]
+struct OnlyPhantom<A, B> {
+    _a: PhantomData<A>,
+    _b: PhantomData<B>,
+}
+
+#[test]
+fn struct_with_only_phantom_fields_has_zero_segments() {
+    let v: OnlyPhantom<NoCodecMarker, NoCodecMarker> = OnlyPhantom {
+        _a: PhantomData,
+        _b: PhantomData,
+    };
+    assert_eq!(0, v.segment_count());
+    let s = v.encode_key(Builder::new()).done();
+    assert_eq!("", s);
+}
+
+// Phantom data also works on enum variants -- both named-field and
+// tuple shape -- so an enum can carry a marker without forcing its
+// param to impl Codec.
+#[derive(Debug, PartialEq, Eq, Codec)]
+enum WithPhantom<R> {
+    Named { id: u64, _p: PhantomData<R> },
+    Tuple(u64, PhantomData<R>),
+}
+
+#[test]
+fn enum_phantom_field_skipped_in_named_and_tuple_variants() {
+    round_trip(
+        WithPhantom::<NoCodecMarker>::Named {
+            id: 7,
+            _p: PhantomData,
+        },
+        "named/7",
+    );
+    round_trip(
+        WithPhantom::<NoCodecMarker>::Tuple(99, PhantomData),
+        "tuple/99",
+    );
 }
 
 #[test]

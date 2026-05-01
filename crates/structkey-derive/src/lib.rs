@@ -19,6 +19,20 @@
 //! reaching it transitively through another crate's re-export is not
 //! supported.
 //!
+//! # Phantom data
+//!
+//! Fields whose type's last path segment is `PhantomData` are silently
+//! skipped: not encoded, not decoded, and contribute nothing to
+//! `segment_count`. This lets the derive cover marker-typed structs
+//! such as `Foo<R> { id: u64, _p: PhantomData<R> }` without forcing
+//! the marker `R` to implement `Codec`.
+//!
+//! The detection is by name on the last path segment, so
+//! `PhantomData<R>`, `std::marker::PhantomData<R>`, and
+//! `core::marker::PhantomData<R>` are all recognised. A user-defined
+//! type called `PhantomData` would be a false positive; rename it or
+//! hand-write the impl.
+//!
 //! # Field attributes
 //!
 //! - `#[codec(raw)]` — route the field through `Raw`'s `Codec`
@@ -76,61 +90,91 @@ fn derive_struct(
     input: &DeriveInput,
     fields: &Punctuated<Field, Comma>,
 ) -> syn::Result<TokenStream2> {
-    let field_idents: Vec<&Ident> = fields.iter().map(|f| f.ident.as_ref().unwrap()).collect();
-
     let raw_flags: Vec<bool> = fields.iter().map(check_raw).collect::<syn::Result<_>>()?;
+    let phantom_flags: Vec<bool> = fields.iter().map(|f| is_phantom_data(&f.ty)).collect();
 
     let kv = structkey_root();
 
-    // Each field encodes itself onto the running builder. The builder
-    // owns the segment budget, so fields don't need to thread a
-    // counter through the call chain.
+    // Each non-phantom field encodes itself onto the running builder.
+    // PhantomData fields carry no data and are silently skipped, which
+    // is what lets the derive work for marker-typed structs like
+    // `Foo<R> { id: u64, _p: PhantomData<R> }` without forcing
+    // `R: Codec`.
     let encode_stmts: Vec<TokenStream2> = fields
         .iter()
         .zip(raw_flags.iter())
-        .map(|(f, &raw)| {
+        .zip(phantom_flags.iter())
+        .filter_map(|((f, &raw), &phantom)| {
+            if phantom {
+                return None;
+            }
             let name = f.ident.as_ref().unwrap();
             let receiver = if raw {
                 quote! { #kv::Raw::from_ref(&self.#name) }
             } else {
                 quote! { &self.#name }
             };
-            quote! {
+            Some(quote! {
                 let b = #kv::Codec::encode_key(#receiver, b);
-            }
+            })
         })
         .collect();
 
+    // Decode runs once per non-phantom field; phantom fields fill in
+    // through `::core::marker::PhantomData` directly in the struct
+    // construction below, where Self's declared field type drives the
+    // missing type parameter via inference.
     let decode_lets: Vec<TokenStream2> = fields
         .iter()
         .zip(raw_flags.iter())
-        .map(|(f, &raw)| {
+        .zip(phantom_flags.iter())
+        .filter_map(|((f, &raw), &phantom)| {
+            if phantom {
+                return None;
+            }
             let name = f.ident.as_ref().unwrap();
-            if raw {
-                // Decode as `Raw`, then unwrap to the underlying `String`.
+            Some(if raw {
                 quote! { let #name = <#kv::Raw as #kv::Codec>::decode_key(p)?.into_inner(); }
             } else {
                 quote! { let #name = #kv::Codec::decode_key(p)?; }
+            })
+        })
+        .collect();
+
+    let field_constructors: Vec<TokenStream2> = fields
+        .iter()
+        .zip(phantom_flags.iter())
+        .map(|(f, &phantom)| {
+            let name = f.ident.as_ref().unwrap();
+            if phantom {
+                quote! { #name: ::core::marker::PhantomData }
+            } else {
+                quote! { #name }
             }
         })
         .collect();
 
-    let segment_count_expr = if fields.is_empty() {
+    let segment_count_parts: Vec<TokenStream2> = fields
+        .iter()
+        .zip(raw_flags.iter())
+        .zip(phantom_flags.iter())
+        .filter_map(|((f, &raw), &phantom)| {
+            if phantom {
+                return None;
+            }
+            let name = f.ident.as_ref().unwrap();
+            Some(if raw {
+                quote! { #kv::Codec::segment_count(#kv::Raw::from_ref(&self.#name)) }
+            } else {
+                quote! { #kv::Codec::segment_count(&self.#name) }
+            })
+        })
+        .collect();
+
+    let segment_count_expr = if segment_count_parts.is_empty() {
         quote! { 0 }
     } else {
-        let parts: Vec<TokenStream2> = fields
-            .iter()
-            .zip(raw_flags.iter())
-            .map(|(f, &raw)| {
-                let name = f.ident.as_ref().unwrap();
-                if raw {
-                    quote! { #kv::Codec::segment_count(#kv::Raw::from_ref(&self.#name)) }
-                } else {
-                    quote! { #kv::Codec::segment_count(&self.#name) }
-                }
-            })
-            .collect();
-        quote! { #(#parts)+* }
+        quote! { #(#segment_count_parts)+* }
     };
 
     let name = &input.ident;
@@ -154,7 +198,7 @@ fn derive_struct(
             where Self: Sized
             {
                 #(#decode_lets)*
-                ::std::result::Result::Ok(Self { #(#field_idents),* })
+                ::std::result::Result::Ok(Self { #(#field_constructors),* })
             }
 
             fn segment_count(&self) -> usize {
@@ -263,23 +307,36 @@ fn build_variant_parts(
                 .iter()
                 .map(check_raw)
                 .collect::<syn::Result<_>>()?;
+            let phantom_flags: Vec<bool> =
+                named.named.iter().map(|f| is_phantom_data(&f.ty)).collect();
             let field_idents: Vec<&Ident> = named
                 .named
                 .iter()
                 .map(|f| f.ident.as_ref().unwrap())
                 .collect();
-            // Bind each field to a synthetic name so it cannot shadow
-            // the builder local `b` (e.g. a field literally named `b`).
-            let synth: Vec<Ident> = (0..field_idents.len())
-                .map(|i| Ident::new(&format!("__f{}", i), Span::call_site()))
+
+            // Pattern bindings: real synthetic name for active fields,
+            // `_` for phantom positions (can't omit -- enums require
+            // every field to appear or use `..`, and a real binding for
+            // a never-encoded field would draw `unused_variables`).
+            let bindings: Vec<TokenStream2> = field_idents
+                .iter()
+                .zip(phantom_flags.iter())
+                .enumerate()
+                .map(|(i, (field, &phantom))| {
+                    if phantom {
+                        quote! { #field: _ }
+                    } else {
+                        let s = synth_name(i);
+                        quote! { #field: #s }
+                    }
+                })
                 .collect();
 
-            let bindings = field_idents
-                .iter()
-                .zip(synth.iter())
-                .map(|(field, syn)| quote! { #field: #syn });
+            let active = active_field_iter(&raw_flags, &phantom_flags);
 
-            let encode_stmts = synth.iter().zip(raw_flags.iter()).map(|(s, &raw)| {
+            let encode_stmts = active.clone().map(|(i, raw)| {
+                let s = synth_name(i);
                 let receiver = if raw {
                     quote! { #kv::Raw::from_ref(#s) }
                 } else {
@@ -288,9 +345,8 @@ fn build_variant_parts(
                 quote! { let b = #kv::Codec::encode_key(#receiver, b); }
             });
 
-            let bindings_for_encode = bindings.clone();
             let encode = quote! {
-                Self::#v_ident { #(#bindings_for_encode),* } => {
+                Self::#v_ident { #(#bindings),* } => {
                     let b = b.push_raw(#tag);
                     #(#encode_stmts)*
                     b
@@ -300,8 +356,11 @@ fn build_variant_parts(
             let decode_assigns = field_idents
                 .iter()
                 .zip(raw_flags.iter())
-                .map(|(field, &raw)| {
-                    if raw {
+                .zip(phantom_flags.iter())
+                .map(|((field, &raw), &phantom)| {
+                    if phantom {
+                        quote! { #field: ::core::marker::PhantomData }
+                    } else if raw {
                         quote! { #field: <#kv::Raw as #kv::Codec>::decode_key(p)?.into_inner() }
                     } else {
                         quote! { #field: #kv::Codec::decode_key(p)? }
@@ -314,16 +373,18 @@ fn build_variant_parts(
                 }),
             };
 
-            let count = if synth.is_empty() {
+            let count_terms = active.clone().map(|(i, raw)| {
+                let s = synth_name(i);
+                if raw {
+                    quote! { #kv::Codec::segment_count(#kv::Raw::from_ref(#s)) }
+                } else {
+                    quote! { #kv::Codec::segment_count(#s) }
+                }
+            });
+
+            let count = if active.clone().count() == 0 {
                 quote! { Self::#v_ident { .. } => 1, }
             } else {
-                let count_terms = synth.iter().zip(raw_flags.iter()).map(|(s, &raw)| {
-                    if raw {
-                        quote! { #kv::Codec::segment_count(#kv::Raw::from_ref(#s)) }
-                    } else {
-                        quote! { #kv::Codec::segment_count(#s) }
-                    }
-                });
                 quote! {
                     Self::#v_ident { #(#bindings),* } => 1 #(+ #count_terms)*,
                 }
@@ -342,11 +403,31 @@ fn build_variant_parts(
                 .iter()
                 .map(check_raw)
                 .collect::<syn::Result<_>>()?;
-            let synth: Vec<Ident> = (0..unnamed.unnamed.len())
-                .map(|i| Ident::new(&format!("__f{}", i), Span::call_site()))
+            let phantom_flags: Vec<bool> = unnamed
+                .unnamed
+                .iter()
+                .map(|f| is_phantom_data(&f.ty))
                 .collect();
 
-            let encode_stmts = synth.iter().zip(raw_flags.iter()).map(|(s, &raw)| {
+            // Same pattern story as named: synthetic for active, `_`
+            // for phantom positions.
+            let bindings: Vec<TokenStream2> = phantom_flags
+                .iter()
+                .enumerate()
+                .map(|(i, &phantom)| {
+                    if phantom {
+                        quote! { _ }
+                    } else {
+                        let s = synth_name(i);
+                        quote! { #s }
+                    }
+                })
+                .collect();
+
+            let active = active_field_iter(&raw_flags, &phantom_flags);
+
+            let encode_stmts = active.clone().map(|(i, raw)| {
+                let s = synth_name(i);
                 let receiver = if raw {
                     quote! { #kv::Raw::from_ref(#s) }
                 } else {
@@ -356,36 +437,45 @@ fn build_variant_parts(
             });
 
             let encode = quote! {
-                Self::#v_ident(#(#synth),*) => {
+                Self::#v_ident(#(#bindings),*) => {
                     let b = b.push_raw(#tag);
                     #(#encode_stmts)*
                     b
                 }
             };
 
-            let decode_calls = raw_flags.iter().map(|&raw| {
-                if raw {
-                    quote! { <#kv::Raw as #kv::Codec>::decode_key(p)?.into_inner() }
-                } else {
-                    quote! { #kv::Codec::decode_key(p)? }
-                }
-            });
+            let decode_calls =
+                raw_flags
+                    .iter()
+                    .zip(phantom_flags.iter())
+                    .map(|(&raw, &phantom)| {
+                        if phantom {
+                            quote! { ::core::marker::PhantomData }
+                        } else if raw {
+                            quote! { <#kv::Raw as #kv::Codec>::decode_key(p)?.into_inner() }
+                        } else {
+                            quote! { #kv::Codec::decode_key(p)? }
+                        }
+                    });
+
             let decode = quote! {
                 #tag => ::std::result::Result::Ok(Self::#v_ident(#(#decode_calls),*)),
             };
 
-            let count = if synth.is_empty() {
+            let count_terms = active.clone().map(|(i, raw)| {
+                let s = synth_name(i);
+                if raw {
+                    quote! { #kv::Codec::segment_count(#kv::Raw::from_ref(#s)) }
+                } else {
+                    quote! { #kv::Codec::segment_count(#s) }
+                }
+            });
+
+            let count = if active.clone().count() == 0 {
                 quote! { Self::#v_ident(..) => 1, }
             } else {
-                let count_terms = synth.iter().zip(raw_flags.iter()).map(|(s, &raw)| {
-                    if raw {
-                        quote! { #kv::Codec::segment_count(#kv::Raw::from_ref(#s)) }
-                    } else {
-                        quote! { #kv::Codec::segment_count(#s) }
-                    }
-                });
                 quote! {
-                    Self::#v_ident(#(#synth),*) => 1 #(+ #count_terms)*,
+                    Self::#v_ident(#(#bindings),*) => 1 #(+ #count_terms)*,
                 }
             };
 
@@ -402,6 +492,24 @@ fn build_variant_parts(
             count: quote! { Self::#v_ident => 1, },
         }),
     }
+}
+
+fn synth_name(i: usize) -> Ident {
+    Ident::new(&format!("__f{}", i), Span::call_site())
+}
+
+/// Walks `(raw_flags, phantom_flags)` and yields `(position, raw)` for
+/// every non-phantom field, preserving original positions so the
+/// caller can reconstruct synthetic names with `synth_name(i)`.
+fn active_field_iter<'a>(
+    raw_flags: &'a [bool],
+    phantom_flags: &'a [bool],
+) -> impl Iterator<Item = (usize, bool)> + Clone + 'a {
+    raw_flags
+        .iter()
+        .zip(phantom_flags.iter())
+        .enumerate()
+        .filter_map(|(i, (&raw, &phantom))| if phantom { None } else { Some((i, raw)) })
 }
 
 /// Resolve the crate path the macro should emit for `structkey` types.
@@ -426,6 +534,24 @@ fn structkey_root() -> TokenStream2 {
         }
         Err(_) => quote! { ::structkey },
     }
+}
+
+/// Recognise `PhantomData<…>` field types so the derive can skip them.
+///
+/// Match-by-name on the last path segment, so `PhantomData<R>`,
+/// `std::marker::PhantomData<R>`, `core::marker::PhantomData<R>`, and
+/// `marker::PhantomData<R>` are all detected. A user-defined type that
+/// happens to be named `PhantomData` would be a false positive, but
+/// that's very unlikely; documented at the top-level `# Phantom data`
+/// section.
+fn is_phantom_data(ty: &syn::Type) -> bool {
+    let syn::Type::Path(tp) = ty else {
+        return false;
+    };
+    tp.path
+        .segments
+        .last()
+        .is_some_and(|s| s.ident == "PhantomData")
 }
 
 /// Convert a Rust identifier to `snake_case`.
