@@ -67,23 +67,118 @@ use syn::parse_macro_input;
 use syn::punctuated::Punctuated;
 use syn::token::Comma;
 
+/// Derive `StructKey` (and the implied `Codec`) for a type.
+///
+/// Emits both impls in one go, so users don't need to also write
+/// `#[derive(Codec)]` — `#[derive(StructKey)]` covers the trait it
+/// requires. Field-level `#[codec(raw)]` and variant-level
+/// `#[codec(rename = "...")]` attributes are still recognised because
+/// the derive registers the `codec` namespace too.
+///
+/// The container attribute `#[structkey(prefix = "...")]` supplies the
+/// trait's required `PREFIX` constant. The value must be non-empty and
+/// must not contain `/` (segment separator); both are rejected at
+/// compile time.
+///
+/// ```ignore
+/// #[derive(Debug, PartialEq, Eq, StructKey)]
+/// #[structkey(prefix = "session")]
+/// struct UserSession {
+///     user_id: u64,
+///     session: String,
+/// }
+/// ```
+///
+/// Combining `#[derive(Codec, StructKey)]` is an error — both derives
+/// would emit `impl Codec`, producing a duplicate-impl compile error.
+/// Use `#[derive(Codec)]` alone for types that are *parts* of a key
+/// (enum variants embedded in larger keys, helper structs without a
+/// prefix); use `#[derive(StructKey)]` alone for top-level keys.
+#[proc_macro_derive(StructKey, attributes(structkey, codec))]
+pub fn derive_struct_key(input: TokenStream) -> TokenStream {
+    let input = parse_macro_input!(input as DeriveInput);
+    derive_struct_key_inner(&input)
+        .unwrap_or_else(|e| e.to_compile_error())
+        .into()
+}
+
+fn derive_struct_key_inner(input: &DeriveInput) -> syn::Result<TokenStream2> {
+    let prefix = parse_struct_key_prefix(input)?;
+    let codec_impl = build_codec_impl(input)?;
+
+    let kv = structkey_root();
+    let name = &input.ident;
+    let (impl_generics, ty_generics, where_clause) = input.generics.split_for_impl();
+
+    let struct_key_impl = quote! {
+        #[automatically_derived]
+        impl #impl_generics #kv::StructKey for #name #ty_generics #where_clause {
+            const PREFIX: &'static str = #prefix;
+        }
+    };
+
+    Ok(quote! {
+        #codec_impl
+        #struct_key_impl
+    })
+}
+
+fn parse_struct_key_prefix(input: &DeriveInput) -> syn::Result<String> {
+    let mut prefix: Option<String> = None;
+    for attr in &input.attrs {
+        if !attr.path().is_ident("structkey") {
+            continue;
+        }
+        attr.parse_nested_meta(|meta| {
+            if meta.path.is_ident("prefix") {
+                let lit: syn::LitStr = meta.value()?.parse()?;
+                let value = lit.value();
+                if value.is_empty() {
+                    return Err(meta.error("#[structkey(prefix = \"...\")] must not be empty"));
+                }
+                if value.contains('/') {
+                    return Err(meta.error(
+                        "#[structkey(prefix = \"...\")] must not contain '/' (segment separator)",
+                    ));
+                }
+                prefix = Some(value);
+                Ok(())
+            } else {
+                Err(meta.error("unknown #[structkey] option; expected `prefix`"))
+            }
+        })?;
+    }
+    prefix.ok_or_else(|| {
+        syn::Error::new_spanned(
+            &input.ident,
+            "#[derive(StructKey)] requires `#[structkey(prefix = \"...\")]`",
+        )
+    })
+}
+
 #[proc_macro_derive(Codec, attributes(codec))]
 pub fn derive_codec(input: TokenStream) -> TokenStream {
     let input = parse_macro_input!(input as DeriveInput);
+    build_codec_impl(&input)
+        .unwrap_or_else(|e| e.to_compile_error())
+        .into()
+}
 
-    let result = match &input.data {
+/// Shared between `#[derive(Codec)]` and `#[derive(StructKey)]` (since
+/// the latter implies the former). Dispatches on the input's data
+/// shape and returns the `impl Codec` token stream.
+fn build_codec_impl(input: &DeriveInput) -> syn::Result<TokenStream2> {
+    match &input.data {
         Data::Struct(DataStruct {
             fields: Fields::Named(named),
             ..
-        }) => derive_struct(&input, &named.named),
-        Data::Enum(data) => derive_enum(&input, data),
+        }) => derive_struct(input, &named.named),
+        Data::Enum(data) => derive_enum(input, data),
         _ => Err(syn::Error::new_spanned(
             &input.ident,
             "#[derive(Codec)] supports structs with named fields and enums",
         )),
-    };
-
-    result.unwrap_or_else(|e| e.to_compile_error()).into()
+    }
 }
 
 fn derive_struct(

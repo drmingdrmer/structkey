@@ -1,0 +1,17 @@
+error: #[derive(StructKey)] requires `#[structkey(prefix = "...")]`
+  --> tests/ui/struct_key_prefix_invalid.rs:13:8
+   |
+13 | struct Missing {
+   |        ^^^^^^^
+
+error: #[structkey(prefix = "...")] must not be empty
+  --> tests/ui/struct_key_prefix_invalid.rs:18:13
+   |
+18 | #[structkey(prefix = "")]
+   |             ^^^^^^^^^^^
+
+error: #[structkey(prefix = "...")] must not contain '/' (segment separator)
+  --> tests/ui/struct_key_prefix_invalid.rs:24:13
+   |
+24 | #[structkey(prefix = "a/b")]
+   |             ^^^^^^^^^^^^^^

@@ -3,16 +3,13 @@
 Encode structured Rust types as `/`-separated, percent-escaped string keys — designed as a string-key namespace abstraction for KV stores. A typed key becomes a deterministic, human-readable string; the same string round-trips back to the original value.
 
 ```rust
-use structkey::{Codec, StructKey};
+use structkey::StructKey;
 
-#[derive(Debug, PartialEq, Eq, Codec)]
+#[derive(Debug, PartialEq, Eq, StructKey)]
+#[structkey(prefix = "session")]
 struct UserSession {
     user_id: u64,
     session: String,
-}
-
-impl StructKey for UserSession {
-    const PREFIX: &'static str = "session";
 }
 
 let s = UserSession { user_id: 42, session: "abc def".to_string() };
@@ -26,7 +23,8 @@ assert_eq!(s, parsed);
 
 A `StructKey` is encoded as `prefix/field1/field2/.../fieldN`. Each field implements `Codec`, which says how a single value is pushed onto a `Builder` and recovered from a `Parser`. The `Builder` owns the segment budget internally, so codec impls don't have to thread a counter through fields. The crate ships:
 
-- **`#[derive(Codec)]`** for structs with named fields and for enums (named, tuple, and unit variants). Fields are encoded in declaration order; for enums, the variant adds a leading discriminant segment.
+- **`#[derive(Codec)]`** for structs with named fields and for enums (named, tuple, and unit variants). Fields are encoded in declaration order; for enums, the variant adds a leading discriminant segment. Use this for types that are *parts* of a key — e.g. an enum embedded inside a larger struct key.
+- **`#[derive(StructKey)]`** + `#[structkey(prefix = "...")]` for top-level keys. Implies `#[derive(Codec)]` (don't combine, that's a duplicate-impl error). Prefix must be non-empty and free of `/`.
 - **Built-in `Codec` impls** for `String` (percent-escapes special bytes), `u64` / `u32` (decimal), and `()` (zero-segment, useful for prefix-only keys).
 - **`Raw`**, a `String` newtype whose `Codec` skips escaping. Use directly or via `#[codec(raw)]` on a `String` field. The caller is responsible for ensuring the value contains no `/`.
 - **`DirName<K>`**, a print-only view that drops the trailing `level` segments — handy for forming a parent prefix or list-prefix from any structured key. Decoding a `DirName<K>` from a string is intentionally an error; decode `K` directly and wrap.

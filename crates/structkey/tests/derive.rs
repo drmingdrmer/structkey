@@ -454,6 +454,47 @@ fn enum_phantom_field_skipped_in_named_and_tuple_variants() {
     );
 }
 
+// `#[derive(StructKey)]` alone — it implies `#[derive(Codec)]` and
+// emits both impls, so users don't need to list both. Field attributes
+// from the `codec` namespace (`#[codec(raw)]`, `#[codec(rename)]` on
+// variants) still work.
+#[derive(Debug, PartialEq, Eq, StructKey)]
+#[structkey(prefix = "user")]
+struct DerivedKey {
+    user_id: u64,
+    name: String,
+}
+
+#[test]
+fn struct_key_derive_provides_prefix_and_round_trips() {
+    let k = DerivedKey {
+        user_id: 7,
+        name: "alice".to_string(),
+    };
+    assert_eq!("user/7/alice", k.to_string_key());
+    assert_eq!(k, DerivedKey::from_str_key("user/7/alice").unwrap());
+}
+
+// StructKey on a generic struct with a PhantomData marker. Verifies
+// `split_for_impl()` carries `R` through cleanly and that no `R: Codec`
+// bound is synthesized (the marker doesn't impl Codec yet this
+// compiles).
+#[derive(Debug, PartialEq, Eq, StructKey)]
+#[structkey(prefix = "tagged")]
+struct DerivedKeyGeneric<R> {
+    id: u64,
+    _p: PhantomData<R>,
+}
+
+#[test]
+fn struct_key_derive_works_on_generic_with_marker() {
+    let k = DerivedKeyGeneric::<NoCodecMarker> {
+        id: 99,
+        _p: PhantomData,
+    };
+    assert_eq!("tagged/99", k.to_string_key());
+}
+
 #[test]
 fn enum_rename_appears_in_decode_error_message() {
     let mut parser = Parser::new("nope");

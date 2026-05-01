@@ -53,7 +53,9 @@
 //!
 //! # Cargo features
 //!
-//! - `derive` *(default)* — enables `#[derive(Codec)]`. Disable with
+//! - `derive` *(default)* — enables `#[derive(Codec)]` and
+//!   `#[derive(StructKey)]` (the latter takes a
+//!   `#[structkey(prefix = "...")]` container attribute). Disable with
 //!   `default-features = false` to avoid the proc-macro toolchain.
 
 // Alias the crate as `::structkey` so the derive macro can use the same
@@ -80,3 +82,5 @@ pub use raw::Raw;
 pub use struct_key::StructKey;
 #[cfg(feature = "derive")]
 pub use structkey_derive::Codec;
+#[cfg(feature = "derive")]
+pub use structkey_derive::StructKey;

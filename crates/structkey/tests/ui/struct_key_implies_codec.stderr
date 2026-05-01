@@ -1,0 +1,9 @@
+error[E0119]: conflicting implementations of trait `Codec` for type `Both`
+ --> tests/ui/struct_key_implies_codec.rs:8:17
+  |
+8 | #[derive(Codec, StructKey)]
+  |          -----  ^^^^^^^^^ conflicting implementation for `Both`
+  |          |
+  |          first implementation here
+  |
+  = note: this error originates in the derive macro `StructKey` (in Nightly builds, run with -Z macro-backtrace for more info)
