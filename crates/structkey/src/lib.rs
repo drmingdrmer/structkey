@@ -72,6 +72,7 @@ mod helper;
 mod parser;
 mod raw;
 mod struct_key;
+pub mod testing;
 
 pub use builder::Builder;
 pub use codec::Codec;

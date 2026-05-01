@@ -101,13 +101,14 @@ impl StructKey for Triple {
 
 #[test]
 fn triple_via_struct_key_to_string() {
-    let k = Triple {
-        a: 1,
-        b: "hello world".to_string(),
-        c: 2,
-    };
-    assert_eq!("tri/1/hello%20world/2", k.to_string_key());
-    assert_eq!(k, Triple::from_str_key(&k.to_string_key()).unwrap());
+    structkey::testing::assert_round_trip(
+        Triple {
+            a: 1,
+            b: "hello world".to_string(),
+            c: 2,
+        },
+        "tri/1/hello%20world/2",
+    );
 }
 
 #[test]
@@ -467,12 +468,13 @@ struct DerivedKey {
 
 #[test]
 fn struct_key_derive_provides_prefix_and_round_trips() {
-    let k = DerivedKey {
-        user_id: 7,
-        name: "alice".to_string(),
-    };
-    assert_eq!("user/7/alice", k.to_string_key());
-    assert_eq!(k, DerivedKey::from_str_key("user/7/alice").unwrap());
+    structkey::testing::assert_round_trip(
+        DerivedKey {
+            user_id: 7,
+            name: "alice".to_string(),
+        },
+        "user/7/alice",
+    );
 }
 
 // StructKey on a generic struct with a PhantomData marker. Verifies
@@ -488,11 +490,13 @@ struct DerivedKeyGeneric<R> {
 
 #[test]
 fn struct_key_derive_works_on_generic_with_marker() {
-    let k = DerivedKeyGeneric::<NoCodecMarker> {
-        id: 99,
-        _p: PhantomData,
-    };
-    assert_eq!("tagged/99", k.to_string_key());
+    structkey::testing::assert_round_trip(
+        DerivedKeyGeneric::<NoCodecMarker> {
+            id: 99,
+            _p: PhantomData,
+        },
+        "tagged/99",
+    );
 }
 
 #[test]
