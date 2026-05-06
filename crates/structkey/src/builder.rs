@@ -11,6 +11,9 @@ use crate::helper::escape_specified;
 
 pub struct Builder {
     buf: Vec<u8>,
+    /// Number of segments written so far. This cannot be derived from
+    /// `buf.is_empty()` because an empty string is still a real segment.
+    segments_written: usize,
     /// Maximum number of further segments `push_*` may append. Default
     /// `usize::MAX` is effectively unlimited; `0` makes pushes no-ops.
     budget: usize,
@@ -21,6 +24,7 @@ impl Builder {
     pub fn new() -> Self {
         Self {
             buf: Vec::new(),
+            segments_written: 0,
             budget: usize::MAX,
         }
     }
@@ -52,10 +56,11 @@ impl Builder {
             return self;
         }
         self.budget -= 1;
-        if !self.buf.is_empty() {
+        if self.segments_written > 0 {
             // `/`
             self.buf.push(0x2f);
         }
+        self.segments_written += 1;
         self.buf.extend_from_slice(s.as_bytes());
         self
     }
@@ -114,6 +119,15 @@ mod tests {
             .push_u64(3) // dropped
             .done();
         assert_eq!("p/1/2", s);
+    }
+
+    #[test]
+    fn empty_first_segment_still_separates_following_segments() {
+        let s = Builder::new().push_str("").push_u64(1).done();
+        assert_eq!("/1", s);
+
+        let s = Builder::new_prefixed("p").push_str("").push_u64(1).done();
+        assert_eq!("p//1", s);
     }
 
     #[test]

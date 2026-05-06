@@ -94,6 +94,34 @@ mod tests {
         const PREFIX: &'static str = "p";
     }
 
+    #[derive(Debug, PartialEq, Eq)]
+    struct NameThenId {
+        name: String,
+        id: u64,
+    }
+
+    impl Codec for NameThenId {
+        fn encode_key(&self, b: Builder) -> Builder {
+            let b = self.name.encode_key(b);
+            self.id.encode_key(b)
+        }
+
+        fn decode_key(p: &mut Parser) -> Result<Self, Error> {
+            Ok(NameThenId {
+                name: String::decode_key(p)?,
+                id: u64::decode_key(p)?,
+            })
+        }
+
+        fn segment_count(&self) -> usize {
+            self.name.segment_count() + self.id.segment_count()
+        }
+    }
+
+    impl StructKey for NameThenId {
+        const PREFIX: &'static str = "n";
+    }
+
     #[test]
     fn round_trip_prefix_only() {
         let k = Empty;
@@ -111,6 +139,17 @@ mod tests {
         let s = k.to_string_key();
         assert_eq!(s, "p/7/hello%20world");
         assert_eq!(Pair::from_str_key(&s).unwrap(), k);
+    }
+
+    #[test]
+    fn round_trip_empty_first_field() {
+        let k = NameThenId {
+            name: "".to_string(),
+            id: 7,
+        };
+        let s = k.to_string_key();
+        assert_eq!(s, "n//7");
+        assert_eq!(NameThenId::from_str_key(&s).unwrap(), k);
     }
 
     #[test]
