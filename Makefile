@@ -1,6 +1,6 @@
 CARGO_TARGET_DIR ?= $(CURDIR)/target
 
-.PHONY: all setup fmt lint build build-release check test unit-test miri coverage coverage-html clean doc doc-open
+.PHONY: all setup fmt lint build build-release check test unit-test no-default-test miri coverage coverage-html clean doc doc-open
 
 all: lint test
 
@@ -39,10 +39,13 @@ build-release:
 	cargo build --workspace --release
 
 # Testing
-test: unit-test
+test: unit-test no-default-test
 
 unit-test:
 	RUST_LOG="ERROR" cargo nextest run --workspace
+
+no-default-test:
+	cargo test -p structkey --no-default-features --all-targets
 
 # Coverage report (requires cargo-llvm-cov: `make setup`)
 coverage:

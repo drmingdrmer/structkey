@@ -22,3 +22,13 @@ thiserror = { workspace = true }
 [dev-dependencies]
 anyhow = { workspace = true }
 trybuild = { workspace = true }
+
+[[test]]
+name = "derive"
+path = "tests/derive.rs"
+required-features = ["derive"]
+
+[[test]]
+name = "derive_compile_fail"
+path = "tests/derive_compile_fail.rs"
+required-features = ["derive"]
