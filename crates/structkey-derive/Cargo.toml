@@ -1,6 +1,6 @@
 [package]
 name = "structkey-derive"
-description = "Derive macro for structkey::Codec."
+description = "Derive macros for structkey::Codec and structkey::StructKey."
 version = { workspace = true }
 authors = { workspace = true }
 license = { workspace = true }

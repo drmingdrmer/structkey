@@ -1,4 +1,4 @@
-//! Derive macro for `structkey::Codec`.
+//! Derive macros for `structkey::Codec` and `structkey::StructKey`.
 //!
 //! Generates a `Codec` impl for a struct with named fields, or for an
 //! enum, by delegating to each field's own `Codec` impl in declaration
@@ -8,7 +8,8 @@
 //! string is the `snake_case` form of the variant identifier (e.g.
 //! `Database` -> `database`, `TwoWords` -> `two_words`, `UDF` -> `udf`).
 //! The variant's fields follow the discriminant, encoded as they would
-//! be in a struct.
+//! be in a struct. Effective discriminants, including values supplied by
+//! `#[codec(rename = "...")]`, must be unique within the enum.
 //!
 //! # Crate path resolution
 //!
@@ -47,7 +48,8 @@
 //!   enum variant. Use this when the `snake_case` default doesn't match
 //!   an existing wire format, or when you want a separator other than
 //!   `_` (e.g. `two-words` for kebab-case). Value must be non-empty and
-//!   must not contain `/`.
+//!   must not contain `/`, and the resulting discriminant must be unique
+//!   within the enum.
 
 use proc_macro::TokenStream;
 use proc_macro_crate::FoundCrate;

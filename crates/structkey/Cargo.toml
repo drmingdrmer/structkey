@@ -1,6 +1,6 @@
 [package]
 name = "structkey"
-description = "Encode structured Rust types as /-separated, percent-escaped string keys, with #[derive(Codec)] for zero-boilerplate round-trips. Designed for use as KV-store key namespaces."
+description = "Encode structured Rust types as /-separated, percent-escaped string keys, with derive macros for zero-boilerplate round-trips. Designed for use as KV-store key namespaces."
 version = { workspace = true }
 authors = { workspace = true }
 license = { workspace = true }
@@ -23,6 +23,8 @@ thiserror = { workspace = true }
 anyhow = { workspace = true }
 trybuild = { workspace = true }
 
+# These integration tests exercise proc-macro derives, so keep them out of
+# `cargo test --no-default-features --all-targets`.
 [[test]]
 name = "derive"
 path = "tests/derive.rs"

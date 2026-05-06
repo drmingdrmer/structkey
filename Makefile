@@ -44,6 +44,7 @@ test: unit-test no-default-test
 unit-test:
 	RUST_LOG="ERROR" cargo nextest run --workspace
 
+# Exercise the runtime crate without pulling in the optional proc-macro crate.
 no-default-test:
 	cargo test -p structkey --no-default-features --all-targets
 

@@ -43,7 +43,7 @@ enum Object {
 }
 ```
 
-`#[codec(rename = "...")]` overrides the discriminant per variant. The value must be non-empty and must not contain `/` — both rejected at compile time.
+`#[codec(rename = "...")]` overrides the discriminant per variant. The value must be non-empty, must not contain `/`, and must not duplicate any other effective discriminant in the same enum — all rejected at compile time.
 
 ## PhantomData
 
@@ -57,7 +57,7 @@ Detection is by the last path segment, so `PhantomData<R>`, `std::marker::Phanto
 
 ## Cargo features
 
-- `derive` *(default)* — enables `#[derive(Codec)]`, re-exported from `structkey-derive`. Disable with `default-features = false` if you want to avoid the proc-macro toolchain.
+- `derive` *(default)* — enables `#[derive(Codec)]` and `#[derive(StructKey)]`, re-exported from `structkey-derive`. Disable with `default-features = false` if you want to avoid the proc-macro toolchain.
 
 ## License
 

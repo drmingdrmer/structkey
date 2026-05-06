@@ -165,9 +165,8 @@ fn encode_key_honours_builder_budget() {
     assert_eq!("", s);
 }
 
-// Unknown attribute option fails compilation -- can't test directly
-// here without trybuild, but the `codec(raw)` path is exercised
-// above. A trybuild compile-fail suite can be added later if needed.
+// Compile-fail coverage for invalid derive attributes lives in
+// `derive_compile_fail.rs`; this file covers successful expansion paths.
 
 // `Error` import is exercised by `decode_key`'s signature in the
 // generated impl; this assertion documents that the error type is
