@@ -3,7 +3,7 @@ resolver = "2"
 members = ["crates/structkey", "crates/structkey-derive"]
 
 [workspace.package]
-version = "0.1.0"
+version = "0.1.1"
 authors = ["Zhang Yanpo <drdr.xp@gmail.com>"]
 license = "Apache-2.0"
 edition = "2024"
@@ -12,8 +12,8 @@ homepage = "https://github.com/drmingdrmer/structkey"
 
 [workspace.dependencies]
 # Internal crates
-structkey = { version = "0.1.0", path = "crates/structkey" }
-structkey-derive = { version = "0.1.0", path = "crates/structkey-derive" }
+structkey = { version = "0.1.1", path = "crates/structkey" }
+structkey-derive = { version = "0.1.1", path = "crates/structkey-derive" }
 
 # External
 anyhow = "1"
