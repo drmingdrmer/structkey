@@ -1,8 +1,8 @@
 //! Compile-fail snapshots for `#[derive(Codec)]`.
 //!
 //! Locks in the rejection error message for input shapes the macro does
-//! not support: enums, tuple structs, unit structs, unions, raw on a
-//! non-`String` field, and unknown `#[codec]` sub-options.
+//! not support: tuple structs, unit structs, unions, raw on a non-`String`
+//! field, duplicate enum discriminants, and unknown `#[codec]` sub-options.
 //!
 //! When the rustc error format changes (e.g. on a toolchain bump),
 //! regenerate the `tests/ui/*.stderr` snapshots with:

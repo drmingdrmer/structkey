@@ -328,6 +328,7 @@ fn derive_enum(input: &DeriveInput, data: &DataEnum) -> syn::Result<TokenStream2
             check_variant_rename(v).map(|r| r.unwrap_or_else(|| snake_case(&v.ident.to_string())))
         })
         .collect::<syn::Result<_>>()?;
+    check_unique_variant_tags(data, &tags)?;
 
     let mut encode_arms: Vec<TokenStream2> = Vec::with_capacity(data.variants.len());
     let mut decode_arms: Vec<TokenStream2> = Vec::with_capacity(data.variants.len());
@@ -380,6 +381,26 @@ fn derive_enum(input: &DeriveInput, data: &DataEnum) -> syn::Result<TokenStream2
             }
         }
     })
+}
+
+fn check_unique_variant_tags(data: &DataEnum, tags: &[String]) -> syn::Result<()> {
+    let mut seen: Vec<(&str, &Ident)> = Vec::new();
+
+    for (variant, tag) in data.variants.iter().zip(tags.iter()) {
+        if let Some((_, first_ident)) = seen.iter().find(|(seen_tag, _)| *seen_tag == tag) {
+            return Err(syn::Error::new_spanned(
+                &variant.ident,
+                format!(
+                    "duplicate #[codec] enum discriminant `{}`; first used by variant `{}`",
+                    tag, first_ident
+                ),
+            ));
+        }
+
+        seen.push((tag.as_str(), &variant.ident));
+    }
+
+    Ok(())
 }
 
 struct VariantParts {

@@ -1,0 +1,5 @@
+error: duplicate #[codec] enum discriminant `foo`; first used by variant `Foo`
+  --> tests/ui/rename_duplicate.rs:11:5
+   |
+11 |     Bar,
+   |     ^^^
