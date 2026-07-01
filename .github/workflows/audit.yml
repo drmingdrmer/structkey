@@ -12,7 +12,7 @@ jobs:
   audit:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
       - run: cargo generate-lockfile
       # Install a prebuilt binary: building cargo-audit from source would use the
       # nightly pinned in rust-toolchain.toml, which is older than its dependencies' MSRV.
