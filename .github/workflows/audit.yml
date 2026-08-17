@@ -14,6 +14,9 @@ jobs:
     steps:
       - uses: actions/checkout@v6
       - run: cargo generate-lockfile
-      - uses: rustsec/audit-check@v2
+      # Install a prebuilt binary: building cargo-audit from source would use the
+      # nightly pinned in rust-toolchain.toml, which is older than its dependencies' MSRV.
+      - uses: taiki-e/install-action@v2
         with:
-          token: ${{ secrets.GITHUB_TOKEN }}
+          tool: cargo-audit
+      - run: cargo audit
